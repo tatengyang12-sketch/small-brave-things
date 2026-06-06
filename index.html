@@ -1,4 +1,4 @@
-<!-- Created: 2026-06-05 10:31 PM CT | Update: Beta v0.1 with DBT generator recursion fix and DBT support prompt repair -->
+<!-- Created: 2026-06-05 11:22 PM CT | Update: Beta v0.1 stability patch for DBT practice log actions and file uploads -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2372,7 +2372,7 @@
 </div>
     <div class="app-version-label" aria-label="App version">
       <strong>Small Brave Things Beta v0.1</strong>
-      Last updated: 2026-06-05 10:38 PM CT · Local/Web Beta Test Build
+      Last updated: 2026-06-05 11:22 PM CT · Local/Web Beta Test Build
     </div>
 
   </div>
@@ -10093,6 +10093,692 @@ function editDBTLog(id, button) {
 window.addEventListener("load", function () {
   setTimeout(updateDBTSkillGuide, 0);
 });
+
+
+
+/* ===== 2026-06-05 10:49 PM CT update: explicit Document Library Save Changes flow =====
+   Files selected in the library are now staged first. Users must click Save Changes so the upload action is obvious. */
+var pendingLibraryUploads = [];
+
+function isLibraryImageFile(file) {
+  return !!file && ((file.type || '').toLowerCase().startsWith('image/') || /\.(png|jpe?g|gif|webp)$/i.test(file.name || ''));
+}
+
+function formatLibraryBytes(size) {
+  if (!size && size !== 0) return 'Unknown size';
+  if (size < 1024) return size + ' B';
+  if (size < 1024 * 1024) return Math.round(size / 1024) + ' KB';
+  return (size / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function renderPendingLibraryUploads() {
+  const list = document.getElementById('libraryPendingUploadList');
+  const saveButton = document.getElementById('saveLibraryUploadButton');
+  const status = document.getElementById('libraryUploadStatus');
+
+  if (!list) return;
+
+  if (!pendingLibraryUploads.length) {
+    list.innerHTML = '<div class="library-empty-box">No files selected yet.</div>';
+    if (saveButton) {
+      saveButton.disabled = true;
+      saveButton.textContent = '💾 Save Changes';
+      saveButton.style.opacity = '0.65';
+      saveButton.style.cursor = 'not-allowed';
+    }
+    if (status) {
+      status.classList.add('hidden');
+      status.innerHTML = '';
+    }
+    return;
+  }
+
+  list.innerHTML = pendingLibraryUploads.map(file => {
+    const preview = isLibraryImageFile(file)
+      ? `<div class="library-thumbnail" style="justify-self:start;"><img src="${file.dataUrl}" alt="${escapeHtml(file.name)} preview"></div>`
+      : `<div class="library-thumbnail" style="justify-self:start;">📄</div>`;
+
+    return `
+      <div class="library-item">
+        <div class="library-item-row">
+          <div>
+            <div class="library-file-title">${escapeHtml(file.name)}</div>
+            <div class="library-meta">${escapeHtml(file.type || 'unknown file type')} · ${formatLibraryBytes(file.size)}</div>
+            <div class="small-note" style="text-align:left;margin-top:6px;">Ready to save. Click <strong>Save Changes</strong> to add this to your library.</div>
+          </div>
+          ${preview}
+        </div>
+      </div>`;
+  }).join('');
+
+  if (saveButton) {
+    saveButton.disabled = false;
+    saveButton.textContent = `💾 Save Changes (${pendingLibraryUploads.length})`;
+    saveButton.style.opacity = '1';
+    saveButton.style.cursor = 'pointer';
+  }
+
+  if (status) {
+    status.classList.remove('hidden');
+    status.innerHTML = `<div class="message">${pendingLibraryUploads.length} file(s) selected. Click <strong>Save Changes</strong> before leaving the library.</div>`;
+  }
+}
+
+function handleLibraryFileUpload(event) {
+  const files = Array.from(event.target.files || []);
+  if (files.length === 0) return;
+
+  pendingLibraryUploads = [];
+  let remaining = files.length;
+
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = function(loadEvent) {
+      pendingLibraryUploads.push({
+        tempId: Date.now() + Math.floor(Math.random() * 100000),
+        name: file.name,
+        type: file.type || 'unknown',
+        size: file.size,
+        dataUrl: loadEvent.target.result
+      });
+
+      remaining -= 1;
+      if (remaining === 0) {
+        renderPendingLibraryUploads();
+      }
+    };
+    reader.onerror = function() {
+      remaining -= 1;
+      if (remaining === 0) renderPendingLibraryUploads();
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function savePendingLibraryUploads(button) {
+  if (!pendingLibraryUploads.length) {
+    alert('Choose at least one file first.');
+    return;
+  }
+
+  const category = document.getElementById('libraryUploadCategory')?.value || 'general';
+  const note = document.getElementById('libraryUploadNote')?.value.trim() || '';
+  const saved = getSavedLibraryUploads();
+  const now = new Date().toLocaleString();
+
+  pendingLibraryUploads.slice().reverse().forEach(file => {
+    saved.unshift({
+      id: Date.now() + Math.floor(Math.random() * 100000),
+      name: file.name,
+      type: file.type || 'unknown',
+      size: file.size,
+      dataUrl: file.dataUrl,
+      addedAt: now,
+      libraryCategory: category,
+      libraryNote: note
+    });
+  });
+
+  saveLibraryUploads(saved);
+  pendingLibraryUploads = [];
+
+  const input = document.getElementById('libraryUploadInput');
+  if (input) input.value = '';
+  const noteInput = document.getElementById('libraryUploadNote');
+  if (noteInput) noteInput.value = '';
+
+  currentLibraryCategoryFilter = category;
+  const categoryFilter = document.getElementById('libraryCategoryFilter');
+  if (categoryFilter) categoryFilter.value = category;
+
+  renderPendingLibraryUploads();
+  renderDocumentLibrary();
+  if (typeof showButtonFeedback === 'function') showButtonFeedback(button, '✅ Saved');
+}
+
+function clearPendingLibraryUploads(button) {
+  pendingLibraryUploads = [];
+  const input = document.getElementById('libraryUploadInput');
+  if (input) input.value = '';
+  renderPendingLibraryUploads();
+  if (typeof showButtonFeedback === 'function') showButtonFeedback(button, '✅ Cleared', 900);
+}
+
+function ensureDocumentLibraryModal() {
+  let existing = document.getElementById('documentLibraryModal');
+  if (existing) existing.remove();
+
+  const app = document.querySelector('.app') || document.body;
+  const html = `
+    <div id="documentLibraryModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="documentLibraryTitle">
+      <div class="modal-card">
+        <button class="modal-x-button" onclick="closeDocumentLibrary(this)" aria-label="Close document library">×</button>
+        <h2 id="documentLibraryTitle">Document Library</h2>
+        <p>Upload, find, and organize files from one place. Files are grouped by where they belong in the app.</p>
+
+        <div class="library-control-box">
+          <div class="library-control-label">Library tools</div>
+          <div class="library-toolbar">
+            <button class="soft-button" onclick="toggleLibraryUploadPanel(this)">📎 Upload Files</button>
+            <button class="secondary-button" onclick="toggleLibraryFilterPanel(this)">🔎 Filter</button>
+            <button class="secondary-button" onclick="toggleLibrarySelectionMode(this)">Select item(s)</button>
+            <button class="secondary-button" onclick="clearLibraryFilters(this)">Clear Filters</button>
+          </div>
+
+          <div id="librarySelectionActions" class="library-selection-actions hidden">
+            <button class="secondary-button" onclick="copySelectedLibraryItems(this)">Copy</button>
+            <button class="secondary-button" onclick="pinSelectedLibraryItems(this)">Pin</button>
+            <button class="secondary-button" onclick="duplicateSelectedLibraryItems(this)">Duplicate</button>
+            <button class="secondary-button" onclick="archiveSelectedLibraryItems(this)">Archive</button>
+            <button class="delete-button" onclick="deleteSelectedLibraryItems(this)">Delete</button>
+          </div>
+        </div>
+
+        <div id="libraryUploadPanel" class="library-upload-panel hidden">
+          <label for="libraryUploadCategory">Where should these files go?</label>
+          <select id="libraryUploadCategory">
+            <option value="general">General Library</option>
+            <option value="dailyJournal">Daily Journal Ideas</option>
+            <option value="reasons">Reasons I'm Still Here</option>
+            <option value="dbt">DBT Skills</option>
+            <option value="pinboard">Pinboard Ideas</option>
+            <option value="creativeProjects">Creative Projects</option>
+          </select>
+
+          <label for="libraryUploadNote">Optional note:</label>
+          <input id="libraryUploadNote" placeholder="Example: sketch for book idea, screenshot from today, therapy worksheet" />
+
+          <label for="libraryUploadInput">Choose files:</label>
+          <input id="libraryUploadInput" type="file" multiple onchange="handleLibraryFileUpload(event)" />
+          <p class="small-note">These files are not added until you click <strong>Save Changes</strong>. Smaller files work best until we add real cloud storage later.</p>
+
+          <div id="libraryPendingUploadList" class="attachment-list"></div>
+          <div id="libraryUploadStatus" class="output hidden"></div>
+          <div class="modal-action-row">
+            <button id="saveLibraryUploadButton" onclick="savePendingLibraryUploads(this)" disabled style="opacity:0.65;cursor:not-allowed;">💾 Save Changes</button>
+            <button class="secondary-button" onclick="clearPendingLibraryUploads(this)">Clear Selected Files</button>
+          </div>
+        </div>
+
+        <div id="libraryFilterPanel" class="library-filter-panel hidden">
+          <div class="library-filter-grid">
+            <div>
+              <label for="librarySearchInput">Search library:</label>
+              <input id="librarySearchInput" placeholder="File name, note, folder, entry title" oninput="renderDocumentLibrary()" />
+            </div>
+            <div>
+              <label for="libraryCategoryFilter">Folder:</label>
+              <select id="libraryCategoryFilter" onchange="setLibraryCategoryFilter(this.value)">
+                <option value="all">All folders</option>
+                <option value="archived">Archived</option>
+                <option value="dailyJournal">Daily Journal</option>
+                <option value="reasons">Reasons I'm Still Here</option>
+                <option value="dbt">DBT Skills</option>
+                <option value="pinboard">Pinboard</option>
+                <option value="creativeProjects">Creative Projects</option>
+                <option value="general">General Library</option>
+              </select>
+            </div>
+            <div>
+              <label for="libraryTypeFilter">File type:</label>
+              <select id="libraryTypeFilter" onchange="renderDocumentLibrary()">
+                <option value="all">All types</option>
+                <option value="image">Images</option>
+                <option value="pdf">PDFs</option>
+                <option value="document">Documents</option>
+                <option value="spreadsheet">Spreadsheets</option>
+                <option value="presentation">Presentations</option>
+                <option value="text">Text files</option>
+                <option value="other">Other files</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div id="libraryFolderChips" class="library-folder-row"></div>
+        <div id="documentLibraryOutput" class="output"></div>
+        <div class="modal-actions">
+          <button class="secondary-button" onclick="closeDocumentLibrary(this)">Close Library</button>
+        </div>
+      </div>
+    </div>`;
+  app.insertAdjacentHTML('afterbegin', html);
+  renderPendingLibraryUploads();
+  if (typeof setupModalDismissHandlers === 'function') setupModalDismissHandlers();
+}
+
+
+
+/* ===== 2026-06-05 11:06 PM CT fix: DBT Skills uploads now sync into Document Library =====
+   DBT attachments now appear under the DBT Skills folder even before/while the practice is being saved,
+   and the library refreshes after DBT upload/save actions. */
+(function setupDBTLibrarySyncFix() {
+  function getDBTFileSignature(file) {
+    if (!file) return '';
+    return [
+      file.id || '',
+      file.name || file.fileName || '',
+      file.size || file.fileSize || '',
+      file.addedAt || '',
+      String(file.dataUrl || '').slice(0, 80)
+    ].join('|');
+  }
+
+  function addCurrentDBTFilesToLibraryItems(items) {
+    if (!Array.isArray(items)) return items;
+
+    const dbtSeen = new Set(
+      items
+        .filter(item => item && item.category === 'dbt')
+        .map(item => getDBTFileSignature(item.file))
+        .filter(Boolean)
+    );
+
+    const addFiles = (files, meta) => {
+      (files || []).forEach(file => {
+        if (!file) return;
+        const signature = getDBTFileSignature(file);
+        if (signature && dbtSeen.has(signature)) return;
+
+        const safeMeta = {
+          category: 'dbt',
+          location: meta.location || 'DBT Skills Studio → Current DBT Practice',
+          sourceTitle: meta.sourceTitle || 'Current DBT Practice',
+          sourceType: meta.sourceType || 'DBT Upload',
+          sourceId: meta.sourceId || `current-dbt-${file.id || Date.now()}`,
+          uploadedAt: file.addedAt || meta.uploadedAt || new Date().toLocaleString(),
+          note: meta.note || 'Attached in DBT Skills Studio'
+        };
+
+        let key = '';
+        if (typeof makeLibraryItemKey === 'function') {
+          key = makeLibraryItemKey(file, safeMeta);
+        } else if (typeof libraryHash === 'function') {
+          key = libraryHash([safeMeta.sourceType, safeMeta.sourceId, file.id, file.name, file.size, file.addedAt].join('|'));
+        } else {
+          key = `dbt_${file.id || Math.random()}`;
+        }
+
+        items.push({
+          libraryKey: key,
+          file,
+          category: 'dbt',
+          archived: false,
+          fileKind: typeof getFileKind === 'function' ? getFileKind(file) : 'other',
+          location: safeMeta.location,
+          sourceTitle: safeMeta.sourceTitle,
+          sourceType: safeMeta.sourceType,
+          sourceId: safeMeta.sourceId,
+          uploadedAt: safeMeta.uploadedAt,
+          note: safeMeta.note
+        });
+
+        if (signature) dbtSeen.add(signature);
+      });
+    };
+
+    if (window.currentDBTLog && Array.isArray(window.currentDBTLog.attachments)) {
+      addFiles(window.currentDBTLog.attachments, {
+        sourceTitle: window.currentDBTLog.title || window.currentDBTLog.skillName || 'Current DBT Practice',
+        sourceType: 'DBT Skill',
+        sourceId: window.currentDBTLog.id,
+        uploadedAt: window.currentDBTLog.timestamp,
+        location: 'DBT Skills Studio → Current DBT Practice',
+        note: window.currentDBTLog.situation || 'Attached to current DBT practice'
+      });
+    }
+
+    if (Array.isArray(window.dbtAttachments) && window.dbtAttachments.length > 0) {
+      addFiles(window.dbtAttachments, {
+        sourceTitle: window.currentDBTLog?.title || window.currentDBTLog?.skillName || 'Current DBT Upload',
+        sourceType: window.currentDBTLog?.id ? 'DBT Skill' : 'DBT Upload',
+        sourceId: window.currentDBTLog?.id || 'current-dbt-upload',
+        uploadedAt: new Date().toLocaleString(),
+        location: 'DBT Skills Studio → Current DBT Practice',
+        note: 'Attached in DBT Skills Studio'
+      });
+    }
+
+    return items.sort((a, b) => String(b.uploadedAt).localeCompare(String(a.uploadedAt)));
+  }
+
+  if (typeof collectDocumentLibraryItems === 'function') {
+    const previousCollectDocumentLibraryItemsForDBTSync = collectDocumentLibraryItems;
+    collectDocumentLibraryItems = function() {
+      const items = previousCollectDocumentLibraryItemsForDBTSync();
+      return addCurrentDBTFilesToLibraryItems(items);
+    };
+  }
+
+  if (typeof handleDBTFiles === 'function') {
+    const previousHandleDBTFilesForLibrarySync = handleDBTFiles;
+    handleDBTFiles = function(event) {
+      previousHandleDBTFilesForLibrarySync(event);
+      setTimeout(() => {
+        const modal = document.getElementById('documentLibraryModal');
+        if (modal && !modal.classList.contains('hidden') && typeof renderDocumentLibrary === 'function') {
+          renderDocumentLibrary();
+        }
+      }, 700);
+    };
+  }
+
+  if (typeof saveCurrentDBTLog === 'function') {
+    const previousSaveCurrentDBTLogForLibrarySync = saveCurrentDBTLog;
+    saveCurrentDBTLog = function(button) {
+      previousSaveCurrentDBTLogForLibrarySync(button);
+      if (typeof renderDocumentLibrary === 'function') {
+        renderDocumentLibrary();
+      }
+    };
+  }
+
+  if (typeof viewDocumentSource === 'function') {
+    const previousViewDocumentSourceForDBTUpload = viewDocumentSource;
+    viewDocumentSource = function(itemType, itemId) {
+      if (itemType === 'DBT Upload') {
+        if (typeof closeDocumentLibrary === 'function') closeDocumentLibrary();
+        if (typeof showPage === 'function') showPage('dbtSection', null, { skipLeaveCheck: true, resetForm: false });
+        return;
+      }
+      return previousViewDocumentSourceForDBTUpload(itemType, itemId);
+    };
+  }
+})();
+
+
+
+/* ===== 2026-06-05 11:22 PM CT fix: stable DBT practice log actions =====
+   Repairs DBT save/edit/upload actions after the library sync update.
+   Keeps DBT file attachments connected to saved logs and the Document Library. */
+(function setupStableDBTActions() {
+  function getDBTLogsSafe() {
+    try {
+      return typeof getSavedDBTLogs === 'function' ? getSavedDBTLogs() : JSON.parse(localStorage.getItem('smallBraveThingsDBTLogs') || '[]');
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function saveDBTLogsSafe(logs) {
+    localStorage.setItem('smallBraveThingsDBTLogs', JSON.stringify(logs || []));
+    if (typeof showDBTLogs === 'function') showDBTLogs();
+    if (typeof updateDashboard === 'function') updateDashboard();
+    if (typeof renderDocumentLibrary === 'function') renderDocumentLibrary();
+  }
+
+  function getDBTLogByIdSafe(id) {
+    const numericId = Number(id);
+    return getDBTLogsSafe().find(log => String(log.id) === String(id) || Number(log.id) === numericId) || null;
+  }
+
+  function setDBTValue(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.value = value || '';
+  }
+
+  function mergeFileListsSafe(existingFiles, newFiles) {
+    const map = new Map();
+    [...(existingFiles || []), ...(newFiles || [])].forEach(file => {
+      if (!file) return;
+      const key = [file.id || '', file.name || '', file.size || '', file.addedAt || '', String(file.dataUrl || '').slice(0, 80)].join('|');
+      map.set(key || Math.random().toString(36), file);
+    });
+    return Array.from(map.values());
+  }
+
+  function makeDBTActionMenuSafe(log) {
+    const optionsId = `dbtOptions${log.id}`;
+    const pinLabel = typeof getPinActionLabel === 'function' ? getPinActionLabel('DBT Skill', log.id) : '📌 Pin';
+    if (typeof makeActionMenu === 'function') {
+      return makeActionMenu(optionsId, `
+        <button class="secondary-button" onclick="viewDBTLog(${log.id}, this)">View</button>
+        <button class="secondary-button" onclick="editDBTLog(${log.id}, this)">Edit</button>
+        <button class="secondary-button" onclick="uploadFilesToDBTLog(${log.id}, this)">Upload</button>
+        <button class="secondary-button" onclick="copyDBTLog(${log.id}, this)">Copy</button>
+        <button class="secondary-button" onclick="pinDBTLog(${log.id}, this)">${pinLabel}</button>
+        <button class="secondary-button" onclick="duplicateDBTLog(${log.id}, this)">Duplicate</button>
+        <button class="secondary-button" onclick="archiveDBTLog(${log.id}, this)">Archive</button>
+        <button class="delete-button" onclick="deleteDBTLog(${log.id}, this)">Delete</button>
+      `);
+    }
+    return `
+      <div class="log-actions-wrap">
+        <button class="secondary-button" onclick="viewDBTLog(${log.id}, this)">View</button>
+        <button class="secondary-button" onclick="editDBTLog(${log.id}, this)">Edit</button>
+        <button class="secondary-button" onclick="uploadFilesToDBTLog(${log.id}, this)">Upload</button>
+        <button class="secondary-button" onclick="copyDBTLog(${log.id}, this)">Copy</button>
+        <button class="secondary-button" onclick="pinDBTLog(${log.id}, this)">${pinLabel}</button>
+        <button class="secondary-button" onclick="duplicateDBTLog(${log.id}, this)">Duplicate</button>
+        <button class="secondary-button" onclick="archiveDBTLog(${log.id}, this)">Archive</button>
+        <button class="delete-button" onclick="deleteDBTLog(${log.id}, this)">Delete</button>
+      </div>`;
+  }
+
+  window.showDBTLogs = showDBTLogs = function() {
+    const historyDiv = document.getElementById('dbtHistory');
+    if (!historyDiv) return;
+
+    const logs = getDBTLogsSafe().filter(log => !log.archivedAt);
+    if (logs.length === 0) {
+      historyDiv.innerHTML = '<p>No saved DBT practice logs yet.</p>';
+      return;
+    }
+
+    historyDiv.innerHTML = logs.map(log => `
+      <div class="history-item">
+        <div class="history-title">${escapeHtml(log.title || log.skillName || 'DBT Practice')} ${typeof paperclipFor === 'function' ? paperclipFor(log) : ((log.attachments || []).length ? '📎' : '')}</div>
+        <div class="timestamp">${escapeHtml(log.timestamp || 'Unknown')}</div>
+        <div class="history-preview">${escapeHtml(log.situation || log.need || 'Saved DBT practice')}</div>
+        ${makeDBTActionMenuSafe(log)}
+      </div>
+    `).join('');
+  };
+
+  window.viewDBTLog = viewDBTLog = function(id, button) {
+    const log = getDBTLogByIdSafe(id);
+    const output = document.getElementById('dbtOutput');
+    if (!log || !output) {
+      alert('DBT log not found.');
+      return;
+    }
+
+    currentDBTLog = log;
+    const files = log.attachments || [];
+    const filesHtml = files.length
+      ? `<h3 class="section-title">Files ${typeof paperclipFor === 'function' ? paperclipFor(log) : '📎'}</h3>${files.map(file => typeof renderFilePreview === 'function' ? renderFilePreview(file, true) : `<div class="file-preview-card">${escapeHtml(file.name || 'Attached file')}</div>`).join('')}`
+      : `<h3 class="section-title">Files</h3><p>No files attached to this DBT log yet.</p>`;
+
+    output.classList.remove('hidden');
+    output.innerHTML = `
+      <div class="timestamp">Created: ${escapeHtml(log.timestamp || 'Unknown')}${log.editedAt ? `<br>Last modified: ${escapeHtml(log.editedAt)}` : ''}</div>
+      <h2>${escapeHtml(log.title || log.skillName || 'DBT Practice')} ${files.length ? '📎' : ''}</h2>
+      ${log.practiceText || ''}
+      <h3 class="section-title">Results</h3>
+      <div>${log.resultsText || log.storySeed || 'No results saved yet.'}</div>
+      ${filesHtml}
+      ${makeDBTActionMenuSafe(log)}
+    `;
+
+    if (button && typeof showButtonFeedback === 'function') showButtonFeedback(button, '✅ Opened');
+    if (typeof highlightSection === 'function') highlightSection('dbtOutput');
+    if (typeof scrollToElement === 'function') scrollToElement('dbtOutput');
+  };
+
+  window.editDBTLog = editDBTLog = function(id, button) {
+    const log = getDBTLogByIdSafe(id);
+    if (!log) {
+      alert('DBT log not found.');
+      return;
+    }
+
+    if (typeof showPage === 'function') {
+      showPage('dbtSection', null, { skipLeaveCheck: true, resetForm: false });
+    }
+
+    editingDBTLogId = log.id;
+    currentDBTLog = { ...log };
+
+    const skillSelect = document.getElementById('dbtSkillSelect');
+    if (skillSelect) skillSelect.value = log.skillKey || 'unsure';
+    setDBTValue('dbtSituation', log.situation);
+    setDBTValue('dbtEmotion', log.emotion);
+    setDBTValue('dbtUrge', log.urge);
+    setDBTValue('dbtAction', log.actionTaken);
+    setDBTValue('dbtImpact', log.impact);
+    setDBTValue('dbtNeed', log.need);
+    setDBTValue('dbtResult', log.desiredResult);
+
+    if (typeof dbtAttachments !== 'undefined') {
+      dbtAttachments = Array.isArray(log.attachments) ? [...log.attachments] : [];
+      if (typeof renderDBTFiles === 'function') renderDBTFiles();
+    }
+
+    const output = document.getElementById('dbtOutput');
+    if (output) {
+      output.classList.remove('hidden');
+      output.innerHTML = `
+        <h2>Editing DBT log</h2>
+        <p>Update the fields above, then click <strong>Generate DBT Practice</strong> and <strong>Save</strong> to keep your changes.</p>
+      `;
+    }
+
+    if (typeof updateDBTSkillGuide === 'function') updateDBTSkillGuide();
+    if (typeof markDBTSaved === 'function') markDBTSaved();
+    if (button && typeof showButtonFeedback === 'function') showButtonFeedback(button, '✏️ Editing');
+    const dbtSection = document.getElementById('dbtSection');
+    if (dbtSection) dbtSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  window.saveCurrentDBTLog = saveCurrentDBTLog = function(button) {
+    if (!currentDBTLog) {
+      alert('Generate or open a DBT practice first.');
+      return;
+    }
+
+    const timestamp = new Date().toLocaleString();
+    currentDBTLog.id = currentDBTLog.id || editingDBTLogId || Date.now();
+    currentDBTLog.timestamp = currentDBTLog.timestamp || timestamp;
+    if (editingDBTLogId) currentDBTLog.editedAt = timestamp;
+
+    if (typeof dbtAttachments !== 'undefined') {
+      currentDBTLog.attachments = mergeFileListsSafe(currentDBTLog.attachments || [], dbtAttachments || []);
+    }
+
+    const logs = getDBTLogsSafe();
+    const index = logs.findIndex(log => String(log.id) === String(currentDBTLog.id));
+    if (index >= 0) {
+      logs[index] = { ...logs[index], ...currentDBTLog };
+      currentDBTLog = logs[index];
+    } else {
+      logs.unshift(currentDBTLog);
+    }
+
+    saveDBTLogsSafe(logs);
+    editingDBTLogId = null;
+    if (typeof markDBTSaved === 'function') markDBTSaved();
+    if (button && typeof showButtonFeedback === 'function') showButtonFeedback(button, '✅ Saved');
+    if (typeof highlightSection === 'function') highlightSection('dbtHistory');
+  };
+
+  window.uploadFilesToDBTLog = uploadFilesToDBTLog = function(logId, button) {
+    const log = getDBTLogByIdSafe(logId);
+    if (!log) {
+      alert('DBT log not found.');
+      return;
+    }
+
+    if (typeof openFilePickerForItem !== 'function') {
+      alert('File upload is not ready in this browser.');
+      return;
+    }
+
+    openFilePickerForItem(files => {
+      const logs = getDBTLogsSafe();
+      const index = logs.findIndex(item => String(item.id) === String(logId));
+      if (index < 0) {
+        alert('DBT log not found.');
+        return;
+      }
+
+      logs[index].attachments = mergeFileListsSafe(logs[index].attachments || [], files || []);
+      logs[index].editedAt = new Date().toLocaleString();
+      saveDBTLogsSafe(logs);
+
+      if (currentDBTLog && String(currentDBTLog.id) === String(logId)) {
+        currentDBTLog = logs[index];
+      }
+
+      viewDBTLog(logId);
+      if (button && typeof showButtonFeedback === 'function') showButtonFeedback(button, '✅ Uploaded');
+    });
+  };
+
+  window.editCurrentDBTForm = editCurrentDBTForm = function(button) {
+    const dbtSection = document.getElementById('dbtSection');
+    if (dbtSection) dbtSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (button && typeof showButtonFeedback === 'function') showButtonFeedback(button, '✏️ Edit');
+  };
+
+  window.duplicateDBTLog = duplicateDBTLog = function(logId, button) {
+    const log = getDBTLogByIdSafe(logId);
+    if (!log) {
+      alert('DBT log not found.');
+      return;
+    }
+    const copy = {
+      ...log,
+      id: Date.now(),
+      title: `${log.title || 'DBT Practice'} copy`,
+      timestamp: new Date().toLocaleString(),
+      editedAt: '',
+      archivedAt: ''
+    };
+    const logs = getDBTLogsSafe();
+    logs.unshift(copy);
+    saveDBTLogsSafe(logs);
+    if (button && typeof showButtonFeedback === 'function') showButtonFeedback(button, '✅ Duplicated');
+  };
+
+  window.archiveDBTLog = archiveDBTLog = function(logId, button) {
+    const logs = getDBTLogsSafe();
+    const log = logs.find(item => String(item.id) === String(logId));
+    if (!log) {
+      alert('DBT log not found.');
+      return;
+    }
+    if (!confirm('Archive this DBT practice log?')) return;
+    log.archivedAt = new Date().toLocaleString();
+    saveDBTLogsSafe(logs);
+    const output = document.getElementById('dbtOutput');
+    if (output && currentDBTLog && String(currentDBTLog.id) === String(logId)) {
+      output.classList.add('hidden');
+      output.innerHTML = '';
+      currentDBTLog = null;
+    }
+    if (button && typeof showButtonFeedback === 'function') showButtonFeedback(button, '✅ Archived');
+  };
+
+  window.deleteDBTLog = deleteDBTLog = function(logId, button) {
+    if (!confirm('Delete this DBT practice log?')) return;
+    const logs = getDBTLogsSafe().filter(log => String(log.id) !== String(logId));
+    saveDBTLogsSafe(logs);
+    if (currentDBTLog && String(currentDBTLog.id) === String(logId)) {
+      currentDBTLog = null;
+      editingDBTLogId = null;
+      const output = document.getElementById('dbtOutput');
+      if (output) {
+        output.classList.add('hidden');
+        output.innerHTML = '';
+      }
+    }
+    if (button && typeof showButtonFeedback === 'function') showButtonFeedback(button, '✅ Deleted');
+  };
+
+  window.addEventListener('load', function() {
+    if (typeof showDBTLogs === 'function') showDBTLogs();
+  });
+})();
 
 </script>
 </body>
