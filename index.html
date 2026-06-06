@@ -1,4 +1,4 @@
-<!-- Created: 2026-06-05 7:21 PM CT | Update: grouped Document Library controls and selected actions into one clean control panel -->
+<!-- Created: 2026-06-05 9:59 PM CT | Update: mobile-only layout fix for My Progress, top icons, and sticky menu while keeping desktop layout the same -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1555,6 +1555,169 @@
       .library-control-box .library-toolbar button,
       .library-control-box .library-selection-actions button {
         flex: 1 1 auto;
+      }
+    }
+
+  
+
+    /* 2026-06-05 9:59 PM CT update: mobile-only header/menu fix.
+       Desktop layout stays the same. This only reorganizes the sticky top area on phones. */
+    @media (max-width: 700px) {
+      .app {
+        padding: 14px;
+      }
+
+      header {
+        margin-bottom: 16px;
+      }
+
+      h1 {
+        font-size: 31px;
+        line-height: 1.1;
+      }
+
+      header p {
+        font-size: 17px;
+        line-height: 1.45;
+      }
+
+      .sticky-shell {
+        padding: 8px 0 10px;
+      }
+
+      .sticky-shell .app-top-bar,
+      #appTopBar {
+        display: grid !important;
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+        gap: 8px !important;
+        align-items: stretch !important;
+        padding: 10px !important;
+        border-radius: 18px !important;
+        overflow: visible !important;
+      }
+
+      .progress-summary-button {
+        grid-column: 1 / -1 !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        min-height: 0 !important;
+        display: grid !important;
+        grid-template-columns: 1fr !important;
+        gap: 8px !important;
+        padding: 10px !important;
+        border-radius: 16px !important;
+        overflow: visible !important;
+        align-items: stretch !important;
+        justify-content: stretch !important;
+        text-align: center !important;
+      }
+
+      .progress-summary-button .progress-label {
+        width: auto !important;
+        min-width: 0 !important;
+        white-space: normal !important;
+        text-align: center !important;
+        font-size: 15px !important;
+        padding: 8px 10px !important;
+      }
+
+      .progress-summary-button .mini-progress,
+      .mini-progress {
+        width: 100% !important;
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 8px !important;
+        justify-content: stretch !important;
+        flex-wrap: nowrap !important;
+      }
+
+      .progress-summary-button .mini-progress span,
+      .mini-progress span {
+        min-width: 0 !important;
+        width: auto !important;
+        padding: 9px 8px !important;
+        font-size: 13px !important;
+        line-height: 1.2 !important;
+        white-space: normal !important;
+      }
+
+      .progress-summary-button .mini-progress strong,
+      .mini-progress strong {
+        display: block !important;
+        margin-left: 0 !important;
+        margin-top: 2px !important;
+        font-size: 20px !important;
+      }
+
+      .home-icon-button,
+      .global-search-button,
+      .document-library-button {
+        width: 100% !important;
+        min-width: 0 !important;
+        height: 46px !important;
+        margin-top: 0 !important;
+        padding: 0 !important;
+        border-radius: 16px !important;
+        font-size: 22px !important;
+      }
+
+      .app-nav-bar.two-buttons,
+      .app-nav-bar {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 8px !important;
+        padding: 8px !important;
+        border-radius: 18px !important;
+      }
+
+      .app-nav-bar.two-buttons button,
+      .app-nav-bar button {
+        width: 100% !important;
+        margin-top: 0 !important;
+        min-height: 46px !important;
+        font-size: 15px !important;
+        border-radius: 14px !important;
+        padding: 10px 8px !important;
+      }
+
+      .card,
+      .output,
+      .history-card {
+        padding: 16px;
+        border-radius: 18px;
+      }
+
+      .pinboard-header-row {
+        display: block !important;
+      }
+
+      .pinboard-header-row button {
+        width: 100% !important;
+        margin-top: 12px !important;
+      }
+
+      .modal-card {
+        max-height: 82vh;
+        padding: 18px;
+      }
+    }
+
+    @media (max-width: 390px) {
+      h1 {
+        font-size: 28px;
+      }
+
+      .home-icon-button,
+      .global-search-button,
+      .document-library-button {
+        height: 42px !important;
+        font-size: 20px !important;
+      }
+
+      .progress-summary-button .mini-progress span,
+      .mini-progress span {
+        font-size: 12px !important;
+        padding: 8px 6px !important;
       }
     }
 
