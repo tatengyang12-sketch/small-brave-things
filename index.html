@@ -1,4 +1,4 @@
-<!-- Created: 2026-06-05 11:54 PM CT | Update: fixed Document Library View item routing to original entries/forms and restored Edit in library LOV menus -->
+<!-- Created: 2026-06-06 09:03 AM CT | Update: public beta prep kit; added beta safety/storage wording, fixed memory file remove handler, generated launch docs -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1756,6 +1756,40 @@
       color: #8a553c;
     }
 
+  
+
+    /* Public beta prep additions */
+    .beta-info-card {
+      background: #fff4eb;
+      border: 2px solid #ead8c8;
+      border-radius: 18px;
+      padding: 14px;
+      margin: 12px 0;
+      color: #3b2f2f;
+    }
+
+    .beta-info-card strong {
+      color: #8a553c;
+    }
+
+    .beta-info-card ul {
+      margin: 8px 0 0;
+      padding-left: 20px;
+      line-height: 1.5;
+    }
+
+    .app-version-label {
+      text-align: center;
+      font-size: 13px;
+      line-height: 1.45;
+      color: #6d5548;
+      background: #fffaf5;
+      border: 1px solid #ead8c8;
+      border-radius: 16px;
+      padding: 12px;
+      margin: 24px 0 8px;
+    }
+
   </style>
 </head>
 
@@ -2372,7 +2406,7 @@
 </div>
     <div class="app-version-label" aria-label="App version">
       <strong>Small Brave Things Beta v0.1</strong>
-      Last updated: 2026-06-05 11:38 PM CT · Local/Web Beta Test Build
+      Last updated: 2026-06-06 09:03 AM CT · Local/Web Beta Test Build
     </div>
 
   </div>
@@ -10290,12 +10324,12 @@ function ensureDocumentLibraryModal() {
 
           <label for="libraryUploadInput">Choose files:</label>
           <input id="libraryUploadInput" type="file" multiple onchange="handleLibraryFileUpload(event)" />
-          <p class="small-note">These files are not added until you click <strong>Save Changes</strong>. Smaller files work best until we add real cloud storage later.</p>
+          <p class="small-note">These files are not added until you click <strong>Save & Submit</strong>. Smaller files work best until we add real cloud storage later.</p>
 
           <div id="libraryPendingUploadList" class="attachment-list"></div>
           <div id="libraryUploadStatus" class="output hidden"></div>
           <div class="modal-action-row">
-            <button id="saveLibraryUploadButton" onclick="savePendingLibraryUploads(this)" disabled style="opacity:0.65;cursor:not-allowed;">💾 Save Changes</button>
+            <button id="saveLibraryUploadButton" onclick="savePendingLibraryUploads(this)" disabled style="opacity:0.65;cursor:not-allowed;">💾 Save & Submit</button>
             <button class="secondary-button" onclick="clearPendingLibraryUploads(this)">Clear Selected Files</button>
           </div>
         </div>
@@ -11378,6 +11412,699 @@ function ensureDocumentLibraryModal() {
   }
 })();
 
-</script>
+
+/* ===== 2026-06-06 12:24 AM CT patch: Privacy clear controls + Library action cleanup =====
+   - Removes View item from Library LOV menus.
+   - Ensures Edit appears in Library LOV menus.
+   - Adds Clear DBT Skills Only to Privacy & Data.
+   - Repairs clear buttons and Clear All so they remove the correct browser storage keys.
+   - Moves the DELETE confirmation area above Welcome Screen section if it was displaced. */
+(function setupPrivacyAndLibraryCleanupPatch() {
+  const USER_DATA_KEYS = [
+    'smallBraveThingsEntries',
+    'smallBraveThingsPurposeCards',
+    'smallBraveThingsDBTLogs',
+    'smallBraveThingsVeteranSupport',
+    'smallBraveThingsPinnedItems',
+    'smallBraveThingsLibraryUploads',
+    'smallBraveThingsLibraryArchivedKeys',
+    'smallBraveThingsLibraryDeletedKeys',
+    'smallBraveThingsProgressStartedAt',
+    // Legacy keys from older test builds, kept so Clear All truly clears old beta data too.
+    'smallBraveThingsStories',
+    'smallBraveThingsStoryHistory',
+    'smallBraveThingsSupportNotes',
+    'smallBraveThingsPins',
+    'smallBraveThingsPinboard',
+    'smallBraveThingsPurpose',
+    'smallBraveThingsReasons',
+    'smallBraveThingsDirectLibraryUploads'
+  ];
+
+  function safeCall(fnName) {
+    try {
+      if (typeof window[fnName] === 'function') {
+        window[fnName]();
+      }
+    } catch (error) {
+      console.warn(`${fnName} refresh skipped:`, error);
+    }
+  }
+
+  function refreshAfterPrivacyClear() {
+    try { if (typeof resetActiveOutputsAfterClear === 'function') resetActiveOutputsAfterClear(); } catch (error) {}
+    safeCall('showSavedStories');
+    safeCall('showPurposeCards');
+    safeCall('showVeteranSupportHistory');
+    safeCall('showDBTLogs');
+    safeCall('showPinboard');
+    safeCall('renderArchivedPins');
+    safeCall('renderPinTrash');
+    safeCall('renderDocumentLibrary');
+    safeCall('updateDashboard');
+    safeCall('updateProgressStart');
+  }
+
+  function privacyMessage(title, message, button, feedback) {
+    if (typeof showPrivacyMessage === 'function') {
+      showPrivacyMessage(title, message);
+    } else {
+      alert(`${title}\n\n${message}`);
+    }
+    if (button && typeof showButtonFeedback === 'function') {
+      showButtonFeedback(button, feedback || '✅ Done');
+    }
+  }
+
+  function hasAnyData(keys) {
+    return keys.some(key => {
+      const value = localStorage.getItem(key);
+      if (!value) return false;
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed.length > 0 : Boolean(parsed);
+      } catch (error) {
+        return Boolean(value);
+      }
+    });
+  }
+
+  function clearStorageKeys(keys) {
+    keys.forEach(key => localStorage.removeItem(key));
+  }
+
+  window.clearSavedStories = function(button) {
+    if (!hasAnyData(['smallBraveThingsEntries'])) {
+      privacyMessage('No saved stories to clear.', 'Your saved story history is already empty.', button, 'Nothing to clear');
+      return;
+    }
+    if (!confirm('Clear saved stories only? Reasons, DBT logs, pins, and library files will stay saved.')) return;
+    clearStorageKeys(['smallBraveThingsEntries']);
+    refreshAfterPrivacyClear();
+    privacyMessage('Saved stories cleared.', 'Your saved story history was deleted from this browser.', button, '✅ Stories cleared');
+  };
+
+  window.clearPurposeCards = function(button) {
+    if (!hasAnyData(['smallBraveThingsPurposeCards'])) {
+      privacyMessage('No purpose cards to clear.', 'Your Reasons I’m Still Here history is already empty.', button, 'Nothing to clear');
+      return;
+    }
+    if (!confirm('Clear Reasons I’m Still Here only? Saved stories, DBT logs, pins, and library files will stay saved.')) return;
+    clearStorageKeys(['smallBraveThingsPurposeCards']);
+    refreshAfterPrivacyClear();
+    privacyMessage('Reasons cleared.', 'Your Reasons I’m Still Here cards were deleted from this browser.', button, '✅ Reasons cleared');
+  };
+
+  window.clearDBTSkillsOnly = function(button) {
+    if (!hasAnyData(['smallBraveThingsDBTLogs'])) {
+      privacyMessage('No DBT logs to clear.', 'Your DBT Skills history is already empty.', button, 'Nothing to clear');
+      return;
+    }
+    if (!confirm('Clear DBT Skills logs only? Saved stories, reasons, pins, and direct library uploads will stay saved.')) return;
+    clearStorageKeys(['smallBraveThingsDBTLogs']);
+    try { window.currentDBTLog = null; } catch (error) {}
+    try { window.dbtAttachments = []; } catch (error) {}
+    const output = document.getElementById('dbtOutput');
+    if (output) {
+      output.classList.add('hidden');
+      output.innerHTML = '';
+    }
+    refreshAfterPrivacyClear();
+    privacyMessage('DBT Skills cleared.', 'Your saved DBT Skills practice logs were deleted from this browser.', button, '✅ DBT cleared');
+  };
+
+  window.clearVeteranSupportNotes = function(button) {
+    if (!hasAnyData(['smallBraveThingsVeteranSupport'])) {
+      privacyMessage('No Veteran support notes to clear.', 'Your Veteran support notes are already empty.', button, 'Nothing to clear');
+      return;
+    }
+    if (!confirm('Clear Veteran support notes only? Saved stories, reasons, DBT logs, pins, and library files will stay saved.')) return;
+    clearStorageKeys(['smallBraveThingsVeteranSupport']);
+    try { window.currentVeteranSupport = null; } catch (error) {}
+    const output = document.getElementById('veteranOutput');
+    if (output) {
+      output.classList.add('hidden');
+      output.innerHTML = '';
+    }
+    refreshAfterPrivacyClear();
+    privacyMessage('Veteran support notes cleared.', 'Your Veteran support notes were deleted from this browser.', button, '✅ Notes cleared');
+  };
+
+  window.clearPinnedItems = function(button) {
+    if (!hasAnyData(['smallBraveThingsPinnedItems'])) {
+      privacyMessage('No pins to clear.', 'Your pinboard is already empty.', button, 'Nothing to clear');
+      return;
+    }
+    if (!confirm('Clear pinboard only? Saved stories, reasons, DBT logs, Veteran notes, and library files will stay saved.')) return;
+    clearStorageKeys(['smallBraveThingsPinnedItems']);
+    refreshAfterPrivacyClear();
+    privacyMessage('Pinboard cleared.', 'Your pinned reminders were deleted from this browser.', button, '✅ Pins cleared');
+  };
+
+  window.clearAllSavedData = function(button) {
+    const confirmInput = document.getElementById('clearAllConfirm');
+    const typedValue = confirmInput ? confirmInput.value.trim() : '';
+    if (typedValue !== 'DELETE') {
+      privacyMessage('Type DELETE first.', 'To protect your data, type DELETE in the box before clearing everything.', button, 'Type DELETE first');
+      return;
+    }
+
+    if (!hasAnyData(USER_DATA_KEYS)) {
+      privacyMessage('No saved data to clear.', 'There is no saved user data in this browser right now.', button, 'Nothing to clear');
+      if (confirmInput) confirmInput.value = '';
+      return;
+    }
+
+    if (!confirm('This will clear ALL saved user data in this browser, including stories, reasons, DBT logs, Veteran notes, pins, library uploads, archived/deleted library filters, and progress start date. Continue?')) return;
+    clearStorageKeys(USER_DATA_KEYS);
+    if (confirmInput) confirmInput.value = '';
+    refreshAfterPrivacyClear();
+    privacyMessage('All saved data cleared.', 'All saved user data was deleted from this browser.', button, '✅ All cleared');
+  };
+
+  function ensureDBTClearButtonAndReorderPrivacy() {
+    const privacySection = document.getElementById('privacySection');
+    if (!privacySection) return;
+
+    const veteranButton = privacySection.querySelector('button[onclick="clearVeteranSupportNotes(this)"]');
+    if (veteranButton && !privacySection.querySelector('button[onclick="clearDBTSkillsOnly(this)"]')) {
+      veteranButton.insertAdjacentHTML('beforebegin', '<button class="delete-button" onclick="clearDBTSkillsOnly(this)">Clear DBT Skills Only</button>');
+    }
+
+    const clearAllInput = document.getElementById('clearAllConfirm');
+    const clearAllLabel = privacySection.querySelector('label[for="clearAllConfirm"]');
+    const clearAllButton = privacySection.querySelector('button[onclick="clearAllSavedData(this)"]');
+    const welcomeHeading = Array.from(privacySection.querySelectorAll('h3')).find(h => h.textContent.trim().toLowerCase().includes('welcome'));
+
+    if (clearAllInput && clearAllLabel && clearAllButton && welcomeHeading) {
+      let clearAllBox = document.getElementById('privacyClearAllBox');
+      if (!clearAllBox) {
+        clearAllBox = document.createElement('div');
+        clearAllBox.id = 'privacyClearAllBox';
+        clearAllBox.className = 'support-box';
+        clearAllBox.innerHTML = '<strong>Clear everything</strong><p>This is the final delete option. Type DELETE first so the app knows you meant it.</p>';
+      }
+      clearAllBox.appendChild(clearAllLabel);
+      clearAllBox.appendChild(clearAllInput);
+      clearAllBox.appendChild(clearAllButton);
+      privacySection.insertBefore(clearAllBox, welcomeHeading);
+    }
+  }
+
+  function removeLibraryViewButtons() {
+    const modal = document.getElementById('documentLibraryModal');
+    if (!modal) return;
+    modal.querySelectorAll('button').forEach(button => {
+      const label = (button.textContent || '').trim().toLowerCase();
+      if (label.includes('view item')) {
+        button.remove();
+      }
+    });
+  }
+
+  window.renderLibraryItemOptions = renderLibraryItemOptions = function(item) {
+    const key = item && item.libraryKey;
+    const safeKey = String(key || '').replace(/'/g, "\\'");
+    return `
+      <div class="library-item-options-wrap">
+        <button class="secondary-button options-toggle" onclick="toggleLibraryItemOptions('${safeKey}', event)" title="File options">⋯</button>
+        <div id="libraryOptions-${safeKey}" class="library-item-options hidden">
+          <button class="secondary-button" onclick="editLibraryItemByKey('${safeKey}', this)">✏️ Edit</button>
+          <button class="secondary-button" onclick="downloadLibraryItemByKey('${safeKey}')">⬇️ Download</button>
+          <button class="secondary-button" onclick="copyLibraryItemInfoByKey('${safeKey}')">📋 Copy</button>
+          <button class="secondary-button" onclick="pinLibraryItemByKey('${safeKey}', this)">📌 Pin</button>
+          <button class="secondary-button" onclick="duplicateLibraryItemByKey('${safeKey}', this)">⧉ Duplicate</button>
+          <button class="secondary-button" onclick="archiveLibraryItemByKey('${safeKey}', this)">🗄️ Archive</button>
+          <button class="delete-button" onclick="deleteLibraryItemByKey('${safeKey}', this)">🗑️ Delete</button>
+        </div>
+      </div>`;
+  };
+
+  if (typeof renderDocumentLibrary === 'function' && !renderDocumentLibrary.__privacyLibraryCleanupWrapped) {
+    const previousRenderDocumentLibraryForCleanup = renderDocumentLibrary;
+    renderDocumentLibrary = function() {
+      previousRenderDocumentLibraryForCleanup();
+      removeLibraryViewButtons();
+    };
+    renderDocumentLibrary.__privacyLibraryCleanupWrapped = true;
+  }
+
+  if (typeof openDocumentLibrary === 'function' && !openDocumentLibrary.__privacyLibraryCleanupWrapped) {
+    const previousOpenDocumentLibraryForCleanup = openDocumentLibrary;
+    openDocumentLibrary = function(button) {
+      previousOpenDocumentLibraryForCleanup(button);
+      setTimeout(removeLibraryViewButtons, 50);
+    };
+    openDocumentLibrary.__privacyLibraryCleanupWrapped = true;
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    ensureDBTClearButtonAndReorderPrivacy();
+    setTimeout(() => {
+      ensureDBTClearButtonAndReorderPrivacy();
+      removeLibraryViewButtons();
+    }, 300);
+  });
+
+  // Run once immediately too, for pages that were already loaded before this patch block ran.
+  ensureDBTClearButtonAndReorderPrivacy();
+})();
+
+
+
+/* ===== 2026-06-06 12:41 AM CT update: Save Changes flow for every compact Upload action =====
+   Any Upload button from Journal, Reasons, DBT, Pins, or generated previews now stages files first.
+   Files are not attached until the user clicks Save Changes. This avoids accidental uploads before notes/location are clear. */
+var pendingCompactUpload = null;
+
+function ensureCompactUploadModal() {
+  let modal = document.getElementById('compactUploadModal');
+  if (modal) return modal;
+
+  const app = document.querySelector('.app') || document.body;
+  modal = document.createElement('div');
+  modal.id = 'compactUploadModal';
+  modal.className = 'modal-overlay hidden';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'compactUploadTitle');
+  modal.innerHTML = `
+    <div class="modal-card compact-upload-card" onclick="event.stopPropagation();">
+      <button class="modal-x-button" onclick="closeCompactUploadModal(this)" aria-label="Close upload window">×</button>
+      <h2 id="compactUploadTitle">Upload files</h2>
+      <p id="compactUploadSubtitle">Choose files first. They will not attach until you click Save Changes.</p>
+
+      <label for="compactUploadNote">Optional note for these files:</label>
+      <input id="compactUploadNote" placeholder="Example: worksheet, screenshot, project idea, memory photo" oninput="syncCompactPendingUploadNote()" />
+
+      <label for="compactUploadInput">Choose files:</label>
+      <input id="compactUploadInput" type="file" multiple onchange="handleCompactUploadFiles(event)" />
+      <p class="small-note">Files are staged here first. Click <strong>Save Changes</strong> to attach them to the selected item.</p>
+
+      <div id="compactPendingUploadList" class="attachment-list"></div>
+      <div id="compactUploadStatus" class="output hidden"></div>
+
+      <div class="modal-action-row compact-upload-actions">
+        <button id="compactSaveUploadButton" onclick="saveCompactUploadChanges(this)" disabled style="opacity:0.65;cursor:not-allowed;">💾 Save Changes</button>
+        <button class="secondary-button" onclick="clearCompactUploadSelection(this)">Clear Selected Files</button>
+        <button class="secondary-button" onclick="closeCompactUploadModal(this)">Cancel</button>
+      </div>
+    </div>`;
+
+  modal.addEventListener('click', function(event) {
+    if (event.target === modal) closeCompactUploadModal();
+  });
+  app.appendChild(modal);
+  return modal;
+}
+
+function getCompactUploadTargetLabel(targetType) {
+  const labels = {
+    currentEntry: 'Generated story preview',
+    savedEntry: 'saved Daily Journal entry',
+    purposeCard: "Reason I'm Still Here",
+    dbtLog: 'DBT practice log',
+    pin: 'pinboard item'
+  };
+  return labels[targetType] || 'selected item';
+}
+
+function openCompactUploadModal(targetType, targetId, button) {
+  const modal = ensureCompactUploadModal();
+  pendingCompactUpload = {
+    targetType,
+    targetId,
+    sourceButton: button || null,
+    files: [],
+    note: ''
+  };
+
+  const title = document.getElementById('compactUploadTitle');
+  const subtitle = document.getElementById('compactUploadSubtitle');
+  const noteInput = document.getElementById('compactUploadNote');
+  const fileInput = document.getElementById('compactUploadInput');
+
+  if (title) title.textContent = `Upload files to ${getCompactUploadTargetLabel(targetType)}`;
+  if (subtitle) subtitle.textContent = 'Choose files, add a note if needed, then click Save Changes. Nothing is attached until you save.';
+  if (noteInput) noteInput.value = '';
+  if (fileInput) fileInput.value = '';
+
+  renderCompactPendingUploads();
+  modal.classList.remove('hidden');
+  document.body.classList.add('modal-open');
+}
+
+function closeCompactUploadModal(button) {
+  const modal = document.getElementById('compactUploadModal');
+  if (modal) modal.classList.add('hidden');
+  document.body.classList.remove('modal-open');
+  pendingCompactUpload = null;
+  if (button && typeof showButtonFeedback === 'function') showButtonFeedback(button, 'Closed', 700);
+}
+
+function syncCompactPendingUploadNote() {
+  if (!pendingCompactUpload) return;
+  pendingCompactUpload.note = document.getElementById('compactUploadNote')?.value.trim() || '';
+}
+
+function handleCompactUploadFiles(event) {
+  if (!pendingCompactUpload) return;
+  const files = Array.from(event.target.files || []);
+  pendingCompactUpload.files = [];
+  if (!files.length) {
+    renderCompactPendingUploads();
+    return;
+  }
+
+  let remaining = files.length;
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = function(loadEvent) {
+      pendingCompactUpload.files.push({
+        id: Date.now() + Math.floor(Math.random() * 100000),
+        name: file.name,
+        type: file.type || 'unknown',
+        size: file.size,
+        dataUrl: loadEvent.target.result,
+        addedAt: new Date().toLocaleString()
+      });
+      remaining -= 1;
+      if (remaining === 0) renderCompactPendingUploads();
+    };
+    reader.onerror = function() {
+      remaining -= 1;
+      if (remaining === 0) renderCompactPendingUploads();
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderCompactPendingUploads() {
+  const list = document.getElementById('compactPendingUploadList');
+  const saveButton = document.getElementById('compactSaveUploadButton');
+  const status = document.getElementById('compactUploadStatus');
+  const files = pendingCompactUpload?.files || [];
+
+  if (!list) return;
+
+  if (!files.length) {
+    list.innerHTML = '<div class="library-empty-box">No files selected yet.</div>';
+    if (saveButton) {
+      saveButton.disabled = true;
+      saveButton.textContent = '💾 Save Changes';
+      saveButton.style.opacity = '0.65';
+      saveButton.style.cursor = 'not-allowed';
+    }
+    if (status) {
+      status.classList.add('hidden');
+      status.innerHTML = '';
+    }
+    return;
+  }
+
+  list.innerHTML = files.map(file => {
+    const preview = typeof renderFilePreview === 'function'
+      ? renderFilePreview(file, false)
+      : `<div class="file-preview-card">${escapeHtml(file.name || 'Attached file')}</div>`;
+    return `
+      <div class="attachment-item">
+        ${preview}
+        <div class="small-note" style="text-align:left;margin-top:6px;">Waiting to save. Click <strong>Save Changes</strong> to attach this file.</div>
+      </div>`;
+  }).join('');
+
+  if (saveButton) {
+    saveButton.disabled = false;
+    saveButton.textContent = `💾 Save Changes (${files.length})`;
+    saveButton.style.opacity = '1';
+    saveButton.style.cursor = 'pointer';
+  }
+  if (status) {
+    status.classList.remove('hidden');
+    status.innerHTML = `<div class="message">${files.length} file(s) selected. These are not attached yet.</div>`;
+  }
+}
+
+function clearCompactUploadSelection(button) {
+  if (!pendingCompactUpload) return;
+  pendingCompactUpload.files = [];
+  const input = document.getElementById('compactUploadInput');
+  if (input) input.value = '';
+  renderCompactPendingUploads();
+  if (button && typeof showButtonFeedback === 'function') showButtonFeedback(button, '✅ Cleared', 800);
+}
+
+function prepareCompactFilesForSave() {
+  if (!pendingCompactUpload) return [];
+  const note = document.getElementById('compactUploadNote')?.value.trim() || pendingCompactUpload.note || '';
+  return (pendingCompactUpload.files || []).map(file => ({
+    ...file,
+    libraryNote: note,
+    uploadNote: note
+  }));
+}
+
+function finishCompactUploadSave(button, message) {
+  if (typeof renderDocumentLibrary === 'function') {
+    try { renderDocumentLibrary(); } catch (error) { console.warn('Library refresh skipped:', error); }
+  }
+  const sourceButton = pendingCompactUpload?.sourceButton || button;
+  if (sourceButton && typeof showButtonFeedback === 'function') showButtonFeedback(sourceButton, '✅ Uploaded');
+  if (button && typeof showButtonFeedback === 'function') showButtonFeedback(button, message || '✅ Saved');
+  closeCompactUploadModal();
+}
+
+function saveCompactUploadChanges(button) {
+  if (!pendingCompactUpload || !pendingCompactUpload.files.length) {
+    alert('Choose at least one file first.');
+    return;
+  }
+
+  const targetType = pendingCompactUpload.targetType;
+  const targetId = pendingCompactUpload.targetId;
+  const files = prepareCompactFilesForSave();
+  const now = new Date().toLocaleString();
+
+  if (targetType === 'currentEntry') {
+    if (!currentEntry) {
+      alert('Generate a story first.');
+      return;
+    }
+    currentEntry.attachments = [...(currentEntry.attachments || []), ...files];
+    currentEntry.editedAt = now;
+    displayEntry(currentEntry, true);
+    finishCompactUploadSave(button, '✅ Saved');
+    return;
+  }
+
+  if (targetType === 'savedEntry') {
+    const entries = getSavedEntries();
+    const entry = entries.find(item => String(item.id) === String(targetId));
+    if (!entry) {
+      alert('Entry not found.');
+      return;
+    }
+    entry.attachments = [...(entry.attachments || []), ...files];
+    entry.editedAt = now;
+    localStorage.setItem('smallBraveThingsEntries', JSON.stringify(entries));
+    if (typeof showSavedStories === 'function') showSavedStories();
+    displayEntry(entry, false);
+    finishCompactUploadSave(button, '✅ Saved');
+    return;
+  }
+
+  if (targetType === 'purposeCard') {
+    const cards = getPurposeCards();
+    const card = cards.find(item => String(item.id) === String(targetId));
+    if (!card) {
+      alert('Reason not found.');
+      return;
+    }
+    card.attachments = [...(card.attachments || []), ...files];
+    card.editedAt = now;
+    localStorage.setItem('smallBraveThingsPurposeCards', JSON.stringify(cards));
+    if (typeof showPurposeCards === 'function') showPurposeCards();
+    if (typeof displayPurposeCard === 'function') displayPurposeCard(card);
+    finishCompactUploadSave(button, '✅ Saved');
+    return;
+  }
+
+  if (targetType === 'dbtLog') {
+    const logs = typeof getSavedDBTLogs === 'function' ? getSavedDBTLogs() : JSON.parse(localStorage.getItem('smallBraveThingsDBTLogs') || '[]');
+    const log = logs.find(item => String(item.id) === String(targetId));
+    if (!log) {
+      alert('DBT log not found.');
+      return;
+    }
+    log.attachments = [...(log.attachments || []), ...files];
+    log.editedAt = now;
+    localStorage.setItem('smallBraveThingsDBTLogs', JSON.stringify(logs));
+    if (typeof showDBTLogs === 'function') showDBTLogs();
+    if (typeof viewDBTLog === 'function') viewDBTLog(log.id);
+    currentDBTLog = log;
+    finishCompactUploadSave(button, '✅ Saved');
+    return;
+  }
+
+  if (targetType === 'pin') {
+    const pins = getPinnedItems();
+    const pin = pins.find(item => String(item.id) === String(targetId));
+    if (!pin) {
+      alert('Pin not found.');
+      return;
+    }
+    pin.attachments = [...(pin.attachments || []), ...files];
+    const first = pin.attachments[0] || null;
+    pin.fileName = first?.name || pin.fileName || '';
+    pin.fileType = first?.type || pin.fileType || '';
+    pin.fileSize = first?.size || pin.fileSize || '';
+    pin.fileDataUrl = first?.dataUrl || pin.fileDataUrl || '';
+    pin.photoDisplayMode = first && typeof isJpegOrPng === 'function' && isJpegOrPng(first) ? 'photo' : (pin.photoDisplayMode || 'text');
+    pin.editedAt = now;
+    savePinnedItems(pins);
+    if (typeof showPinboard === 'function') showPinboard();
+    if (typeof openPinDetailModal === 'function') openPinDetailModal(pin.id);
+    finishCompactUploadSave(button, '✅ Saved');
+    return;
+  }
+
+  alert('This upload location is not ready yet.');
+}
+
+// Override every compact Upload action so files are staged and confirmed with Save Changes.
+window.uploadFilesToCurrentEntry = uploadFilesToCurrentEntry = function(button) {
+  if (!currentEntry) {
+    alert('Generate a story first.');
+    return;
+  }
+  openCompactUploadModal('currentEntry', currentEntry.id || 'current', button);
+};
+
+window.uploadFilesToSavedEntry = uploadFilesToSavedEntry = function(entryId, button) {
+  openCompactUploadModal('savedEntry', entryId, button);
+};
+
+window.uploadFilesToPurposeCard = uploadFilesToPurposeCard = function(cardId, button) {
+  openCompactUploadModal('purposeCard', cardId, button);
+};
+
+window.uploadFilesToDBTLog = uploadFilesToDBTLog = function(logId, button) {
+  openCompactUploadModal('dbtLog', logId, button);
+};
+
+window.uploadFilesToPin = uploadFilesToPin = function(pinId, button) {
+  openCompactUploadModal('pin', pinId, button);
+};
+
+// Esc closes the new staged-upload modal too.
+document.addEventListener('keydown', function(event) {
+  if (event.key === 'Escape') {
+    const modal = document.getElementById('compactUploadModal');
+    if (modal && !modal.classList.contains('hidden')) {
+      closeCompactUploadModal();
+    }
+  }
+});
+
+
+
+/* ===== 2026-06-06 09:03 AM CT public beta prep patch =====
+   Adds public beta wording, a missing removeMemoryFile handler, and safer beta notes.
+   This patch is intentionally small so the working prototype stays stable. */
+(function() {
+  const PUBLIC_BETA_UPDATED = "2026-06-06 09:03 AM CT";
+
+  window.removeMemoryFile = window.removeMemoryFile || function(fileId) {
+    try {
+      if (Array.isArray(window.journalAttachments)) {
+        window.journalAttachments = window.journalAttachments.filter(file => String(file.id) !== String(fileId));
+      } else if (typeof journalAttachments !== 'undefined' && Array.isArray(journalAttachments)) {
+        journalAttachments = journalAttachments.filter(file => String(file.id) !== String(fileId));
+      }
+
+      if (typeof renderMemoryFiles === 'function') {
+        renderMemoryFiles();
+      } else if (typeof renderMemoryFileList === 'function') {
+        renderMemoryFileList();
+      }
+
+      if (typeof markJournalChanged === 'function') {
+        markJournalChanged();
+      }
+    } catch (error) {
+      console.error('Could not remove memory file:', error);
+    }
+  };
+
+  function addPublicBetaCard(sectionId, cardId, html, position = 'afterbegin') {
+    const section = document.getElementById(sectionId);
+    if (!section || document.getElementById(cardId)) return;
+    section.insertAdjacentHTML(position, html);
+  }
+
+  window.ensurePublicBetaPrepCards = function() {
+    addPublicBetaCard('settingsSection', 'publicBetaSettingsCard', `
+      <div id="publicBetaSettingsCard" class="beta-info-card">
+        <strong>Public beta reminder</strong>
+        <p>This is a beta test build. Use fake entries for testing, back up often, and report anything confusing or broken.</p>
+      </div>
+    `, 'afterbegin');
+
+    addPublicBetaCard('backupSection', 'publicBetaBackupCard', `
+      <div id="publicBetaBackupCard" class="beta-info-card">
+        <strong>Backup reminder</strong>
+        <p>Your saved entries and files live inside this browser on this device. Download a backup before clearing data, switching devices, or doing a big test.</p>
+      </div>
+    `, 'afterbegin');
+
+    addPublicBetaCard('privacySection', 'publicBetaPrivacyCard', `
+      <div id="publicBetaPrivacyCard" class="beta-info-card">
+        <strong>Privacy and storage reminder</strong>
+        <ul>
+          <li>This beta stores data locally in the browser.</li>
+          <li>Large files may not save well until cloud storage is added later.</li>
+          <li>This app is for creative reflection and is not therapy, medical care, or a crisis service.</li>
+        </ul>
+      </div>
+    `, 'afterbegin');
+
+    const version = document.querySelector('.app-version-label');
+    if (version) {
+      version.innerHTML = `<strong>Small Brave Things Beta v0.1</strong><br>Last updated: ${PUBLIC_BETA_UPDATED} · Public Beta Prep Build`;
+    }
+  };
+
+  function addLibraryBetaNote() {
+    const modal = document.getElementById('documentLibraryModal');
+    if (!modal || document.getElementById('publicBetaLibraryCard')) return;
+    const title = modal.querySelector('#documentLibraryTitle');
+    if (!title) return;
+    title.insertAdjacentHTML('afterend', `
+      <div id="publicBetaLibraryCard" class="beta-info-card">
+        <strong>Library upload note</strong>
+        <p>Choose a folder, add a note if needed, then use Save & Submit. Files are still stored in this browser for the beta.</p>
+      </div>
+    `);
+  }
+
+  const originalOpenDocumentLibrary = window.openDocumentLibrary;
+  if (typeof originalOpenDocumentLibrary === 'function' && !originalOpenDocumentLibrary.__betaWrapped) {
+    const wrapped = function(button) {
+      const result = originalOpenDocumentLibrary.call(this, button);
+      setTimeout(addLibraryBetaNote, 0);
+      return result;
+    };
+    wrapped.__betaWrapped = true;
+    window.openDocumentLibrary = wrapped;
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    if (typeof window.ensurePublicBetaPrepCards === 'function') {
+      window.ensurePublicBetaPrepCards();
+    }
+  });
+})();
+
+  </script>
 </body>
 </html>
