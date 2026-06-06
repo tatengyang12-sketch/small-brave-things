@@ -1,4 +1,4 @@
-<!-- Created: 2026-06-05 11:22 PM CT | Update: Beta v0.1 stability patch for DBT practice log actions and file uploads -->
+<!-- Created: 2026-06-05 11:38 PM CT | Update: Library upload now uses Save & Submit, library items can be edited, and file metadata syncs across app areas -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2372,7 +2372,7 @@
 </div>
     <div class="app-version-label" aria-label="App version">
       <strong>Small Brave Things Beta v0.1</strong>
-      Last updated: 2026-06-05 11:22 PM CT · Local/Web Beta Test Build
+      Last updated: 2026-06-05 11:38 PM CT · Local/Web Beta Test Build
     </div>
 
   </div>
@@ -10778,6 +10778,452 @@ function ensureDocumentLibraryModal() {
   window.addEventListener('load', function() {
     if (typeof showDBTLogs === 'function') showDBTLogs();
   });
+})();
+
+
+
+/* ===== 2026-06-05 11:38 PM CT patch: library Save & Submit, edit metadata, and cross-app sync ===== */
+(function setupLibrarySaveSubmitAndEditSync() {
+  const PATCH_NOTE = 'Files wait here until you click Save & Submit, so you can choose the right folder and add notes first.';
+
+  function getNowText() {
+    return new Date().toLocaleString();
+  }
+
+  function safeJsonGet(key) {
+    try {
+      return JSON.parse(localStorage.getItem(key) || '[]');
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function safeJsonSet(key, value) {
+    localStorage.setItem(key, JSON.stringify(value || []));
+  }
+
+  function getFileIdentity(file) {
+    if (!file) return '';
+    return [
+      file.id || '',
+      file.name || file.fileName || '',
+      file.size || file.fileSize || '',
+      String(file.dataUrl || file.fileDataUrl || '').slice(0, 160)
+    ].join('|');
+  }
+
+  function fileLooksLikeSameFile(candidate, target) {
+    if (!candidate || !target) return false;
+    if (candidate.id && target.id && String(candidate.id) === String(target.id)) return true;
+    if ((candidate.dataUrl || candidate.fileDataUrl) && (target.dataUrl || target.fileDataUrl) && String(candidate.dataUrl || candidate.fileDataUrl) === String(target.dataUrl || target.fileDataUrl)) return true;
+    if (String(candidate.name || candidate.fileName || '') === String(target.name || target.fileName || '') && Number(candidate.size || candidate.fileSize || 0) === Number(target.size || target.fileSize || 0)) return true;
+    return getFileIdentity(candidate) === getFileIdentity(target);
+  }
+
+  function refreshAllLibraryConnectedViews() {
+    if (typeof showSavedStories === 'function') showSavedStories();
+    if (typeof showPurposeCards === 'function') showPurposeCards();
+    if (typeof showDBTLogs === 'function') showDBTLogs();
+    if (typeof showPinboard === 'function') showPinboard();
+    if (typeof updateDashboard === 'function') updateDashboard();
+    if (typeof renderDocumentLibrary === 'function') renderDocumentLibrary();
+    if (typeof renderLibraryFolderChips === 'function') renderLibraryFolderChips();
+  }
+
+  function updateMatchingAttachment(list, sourceId, file, updater) {
+    let changed = false;
+    const updatedList = (list || []).map(item => {
+      if (String(item.id) !== String(sourceId)) return item;
+      const attachments = (item.attachments || []).map(att => {
+        if (!fileLooksLikeSameFile(att, file)) return att;
+        changed = true;
+        return updater(att);
+      });
+      return { ...item, attachments, editedAt: getNowText() };
+    });
+    return { changed, updatedList };
+  }
+
+  function applyLibraryItemEditToSource(item, edits) {
+    if (!item || !item.file) return false;
+    const sourceType = item.sourceType || '';
+    const sourceId = item.sourceId;
+    const file = item.file;
+    const updateFile = (oldFile) => ({
+      ...oldFile,
+      name: edits.name || oldFile.name || 'Untitled file',
+      libraryNote: edits.note || '',
+      libraryCategory: edits.category || oldFile.libraryCategory || item.category || 'general',
+      libraryEditedAt: getNowText()
+    });
+
+    if (sourceType === 'Library Upload') {
+      const uploads = typeof getSavedLibraryUploads === 'function' ? getSavedLibraryUploads() : safeJsonGet('smallBraveThingsLibraryUploads');
+      let changed = false;
+      const updated = uploads.map(upload => {
+        if (String(upload.id) === String(sourceId) || fileLooksLikeSameFile(upload, file)) {
+          changed = true;
+          return {
+            ...upload,
+            name: edits.name || upload.name || 'Untitled file',
+            libraryNote: edits.note || '',
+            libraryCategory: edits.category || upload.libraryCategory || 'general',
+            libraryEditedAt: getNowText()
+          };
+        }
+        return upload;
+      });
+      if (changed) {
+        if (typeof saveLibraryUploads === 'function') saveLibraryUploads(updated);
+        else safeJsonSet('smallBraveThingsLibraryUploads', updated);
+      }
+      return changed;
+    }
+
+    if (sourceType === 'Journal Entry') {
+      const entries = typeof getSavedEntries === 'function' ? getSavedEntries() : safeJsonGet('smallBraveThingsEntries');
+      const result = updateMatchingAttachment(entries, sourceId, file, updateFile);
+      if (result.changed) safeJsonSet('smallBraveThingsEntries', result.updatedList);
+      return result.changed;
+    }
+
+    if (sourceType === 'Purpose Card') {
+      const cards = typeof getPurposeCards === 'function' ? getPurposeCards() : safeJsonGet('smallBraveThingsPurposeCards');
+      const result = updateMatchingAttachment(cards, sourceId, file, updateFile);
+      if (result.changed) safeJsonSet('smallBraveThingsPurposeCards', result.updatedList);
+      return result.changed;
+    }
+
+    if (sourceType === 'DBT Skill' || sourceType === 'DBT Upload') {
+      if (sourceType === 'DBT Upload') {
+        if (Array.isArray(window.dbtAttachments)) {
+          window.dbtAttachments = window.dbtAttachments.map(att => fileLooksLikeSameFile(att, file) ? updateFile(att) : att);
+          if (typeof renderDBTFiles === 'function') renderDBTFiles();
+          return true;
+        }
+        return false;
+      }
+      const logs = typeof getSavedDBTLogs === 'function' ? getSavedDBTLogs() : safeJsonGet('smallBraveThingsDBTLogs');
+      const result = updateMatchingAttachment(logs, sourceId, file, updateFile);
+      if (result.changed) safeJsonSet('smallBraveThingsDBTLogs', result.updatedList);
+      return result.changed;
+    }
+
+    if (sourceType === 'Pin') {
+      const pins = typeof getPinnedItems === 'function' ? getPinnedItems() : safeJsonGet('smallBraveThingsPinnedItems');
+      let changed = false;
+      const updated = (pins || []).map(pin => {
+        if (String(pin.id) !== String(sourceId)) return pin;
+        const attachments = (pin.attachments || []).map(att => {
+          if (!fileLooksLikeSameFile(att, file)) return att;
+          changed = true;
+          return updateFile(att);
+        });
+        const updatedPin = { ...pin, attachments, editedAt: getNowText() };
+        if (fileLooksLikeSameFile({ name: pin.fileName, type: pin.fileType, size: pin.fileSize, dataUrl: pin.fileDataUrl }, file)) {
+          changed = true;
+          updatedPin.fileName = edits.name || pin.fileName || 'Untitled file';
+          updatedPin.fileSize = file.size || pin.fileSize;
+          updatedPin.fileType = file.type || pin.fileType;
+          updatedPin.fileDataUrl = file.dataUrl || pin.fileDataUrl;
+        }
+        return updatedPin;
+      });
+      if (changed) {
+        if (typeof savePinnedItems === 'function') savePinnedItems(updated);
+        else safeJsonSet('smallBraveThingsPinnedItems', updated);
+      }
+      return changed;
+    }
+
+    return false;
+  }
+
+  function makeLibraryEditModal() {
+    let modal = document.getElementById('libraryEditModal');
+    if (modal) return modal;
+    const app = document.querySelector('.app') || document.body;
+    app.insertAdjacentHTML('afterbegin', `
+      <div id="libraryEditModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="libraryEditTitle">
+        <div class="modal-card">
+          <button class="modal-x-button" onclick="closeLibraryEditModal()" aria-label="Close edit file window">×</button>
+          <h2 id="libraryEditTitle">Edit File Info</h2>
+          <p>Update the file name, note, or folder. If this file came from a journal, reason, DBT log, or pin, the original attached file updates too.</p>
+          <input id="libraryEditKey" type="hidden" />
+          <label for="libraryEditName">File title/name:</label>
+          <input id="libraryEditName" placeholder="Example: grounding worksheet" />
+          <label for="libraryEditCategory">Folder/category:</label>
+          <select id="libraryEditCategory">
+            <option value="general">General Library</option>
+            <option value="dailyJournal">Daily Journal</option>
+            <option value="reasons">Reasons I'm Still Here</option>
+            <option value="dbt">DBT Skills</option>
+            <option value="pinboard">Pinboard</option>
+            <option value="creativeProjects">Creative Projects</option>
+          </select>
+          <label for="libraryEditNote">Note:</label>
+          <textarea id="libraryEditNote" placeholder="Write why this file matters or what it belongs to."></textarea>
+          <div id="libraryEditSourceNote" class="message"></div>
+          <div class="modal-actions">
+            <button onclick="saveLibraryItemEdits(this)">💾 Save & Submit</button>
+            <button class="secondary-button" onclick="closeLibraryEditModal()">Cancel</button>
+          </div>
+        </div>
+      </div>
+    `);
+    if (typeof setupModalDismissHandlers === 'function') setupModalDismissHandlers();
+    return document.getElementById('libraryEditModal');
+  }
+
+  window.closeLibraryEditModal = function() {
+    const modal = document.getElementById('libraryEditModal');
+    if (modal) modal.classList.add('hidden');
+  };
+
+  window.editLibraryItemByKey = function(key, button) {
+    const item = typeof getLibraryItemByKey === 'function' ? getLibraryItemByKey(key) : null;
+    if (!item) {
+      alert('File not found.');
+      return;
+    }
+    const modal = makeLibraryEditModal();
+    document.getElementById('libraryEditKey').value = key;
+    document.getElementById('libraryEditName').value = item.file?.name || '';
+    document.getElementById('libraryEditCategory').value = item.category === 'archived' ? 'general' : (item.category || 'general');
+    document.getElementById('libraryEditNote').value = item.note || item.file?.libraryNote || '';
+    document.getElementById('libraryEditSourceNote').innerHTML = `
+      <strong>Linked to:</strong> ${typeof escapeHtml === 'function' ? escapeHtml(item.sourceType || 'Library') : item.sourceType || 'Library'}<br>
+      <strong>Original location:</strong> ${typeof escapeHtml === 'function' ? escapeHtml(item.location || 'Document Library') : item.location || 'Document Library'}
+    `;
+    modal.classList.remove('hidden');
+    if (button && typeof showButtonFeedback === 'function') showButtonFeedback(button, '✏️ Edit', 700);
+  };
+
+  window.saveLibraryItemEdits = function(button) {
+    const key = document.getElementById('libraryEditKey')?.value;
+    const item = typeof getLibraryItemByKey === 'function' ? getLibraryItemByKey(key) : null;
+    if (!item) {
+      alert('File not found.');
+      return;
+    }
+
+    const edits = {
+      name: document.getElementById('libraryEditName')?.value.trim() || item.file?.name || 'Untitled file',
+      category: document.getElementById('libraryEditCategory')?.value || item.category || 'general',
+      note: document.getElementById('libraryEditNote')?.value.trim() || ''
+    };
+
+    const changed = applyLibraryItemEditToSource(item, edits);
+    if (!changed) {
+      alert('I could not update this file. Try duplicating it into the library first, then edit the copy.');
+      return;
+    }
+
+    closeLibraryEditModal();
+    refreshAllLibraryConnectedViews();
+    if (button && typeof showButtonFeedback === 'function') showButtonFeedback(button, '✅ Saved');
+  };
+
+  // Wrap collection so edited file category metadata is respected everywhere the library is rendered.
+  if (typeof collectDocumentLibraryItems === 'function' && !collectDocumentLibraryItems.__libraryEditSyncWrapped) {
+    const previousCollect = collectDocumentLibraryItems;
+    const wrappedCollect = function() {
+      const items = previousCollect();
+      return (items || []).map(item => {
+        const overrideCategory = item.file?.libraryCategory;
+        const overrideNote = item.file?.libraryNote;
+        return {
+          ...item,
+          category: overrideCategory || item.category,
+          note: overrideNote || item.note || ''
+        };
+      }).sort((a, b) => String(b.uploadedAt).localeCompare(String(a.uploadedAt)));
+    };
+    wrappedCollect.__libraryEditSyncWrapped = true;
+    collectDocumentLibraryItems = wrappedCollect;
+  }
+
+  // Replace library item menu with one consistent LOV including Edit.
+  window.renderLibraryItemOptions = renderLibraryItemOptions = function(item) {
+    const key = item.libraryKey;
+    return `
+      <div class="library-item-options-wrap">
+        <button class="secondary-button options-toggle" onclick="toggleLibraryItemOptions('${key}', event)" title="File options">⋯</button>
+        <div id="libraryOptions-${key}" class="library-item-options hidden">
+          <button class="secondary-button" onclick="viewLibraryItemByKey('${key}')">👁️ View</button>
+          <button class="secondary-button" onclick="editLibraryItemByKey('${key}', this)">✏️ Edit</button>
+          <button class="secondary-button" onclick="downloadLibraryItemByKey('${key}')">⬇️ Download</button>
+          <button class="secondary-button" onclick="copyLibraryItemInfoByKey('${key}')">📋 Copy</button>
+          <button class="secondary-button" onclick="pinLibraryItemByKey('${key}', this)">📌 Pin</button>
+          <button class="secondary-button" onclick="duplicateLibraryItemByKey('${key}', this)">⧉ Duplicate</button>
+          <button class="secondary-button" onclick="archiveLibraryItemByKey('${key}', this)">🗄️ Archive</button>
+          <button class="delete-button" onclick="deleteLibraryItemByKey('${key}', this)">🗑️ Delete</button>
+        </div>
+      </div>`;
+  };
+
+  // Make direct library upload a clear draft/staging flow. Nothing saves until Save & Submit.
+  window.pendingLibraryUploads = window.pendingLibraryUploads || [];
+
+  window.renderPendingLibraryUploads = renderPendingLibraryUploads = function() {
+    const list = document.getElementById('libraryPendingUploadList');
+    const saveButton = document.getElementById('saveLibraryUploadButton');
+    const status = document.getElementById('libraryUploadStatus');
+    if (!list) return;
+
+    if (!window.pendingLibraryUploads.length) {
+      list.innerHTML = '<div class="library-empty-box">No files selected yet.</div>';
+      if (saveButton) {
+        saveButton.disabled = true;
+        saveButton.textContent = '💾 Save & Submit';
+        saveButton.style.opacity = '0.65';
+        saveButton.style.cursor = 'not-allowed';
+      }
+      if (status) {
+        status.classList.add('hidden');
+        status.innerHTML = '';
+      }
+      return;
+    }
+
+    list.innerHTML = window.pendingLibraryUploads.map(file => {
+      const isImage = (file.type || '').startsWith('image/') && file.dataUrl;
+      const preview = isImage
+        ? `<div class="library-thumbnail" style="justify-self:start;"><img src="${file.dataUrl}" alt="${escapeHtml(file.name)} preview"></div>`
+        : `<div class="library-thumbnail" style="justify-self:start;">📄</div>`;
+      return `
+        <div class="library-item">
+          <div class="library-item-row">
+            <div>
+              <div class="library-file-title">${escapeHtml(file.name)}</div>
+              <div class="library-meta">${escapeHtml(file.type || 'unknown file type')} · ${typeof formatLibraryBytes === 'function' ? formatLibraryBytes(file.size) : file.size + ' bytes'}</div>
+              <div class="small-note" style="text-align:left;margin-top:6px;">Waiting to save. Choose the folder, add notes, then click <strong>Save & Submit</strong>.</div>
+            </div>
+            ${preview}
+          </div>
+        </div>`;
+    }).join('');
+
+    if (saveButton) {
+      saveButton.disabled = false;
+      saveButton.textContent = `💾 Save & Submit (${window.pendingLibraryUploads.length})`;
+      saveButton.style.opacity = '1';
+      saveButton.style.cursor = 'pointer';
+    }
+    if (status) {
+      status.classList.remove('hidden');
+      status.innerHTML = `<div class="message">${window.pendingLibraryUploads.length} file(s) selected but not saved yet. ${PATCH_NOTE}</div>`;
+    }
+  };
+
+  window.handleLibraryFileUpload = handleLibraryFileUpload = function(event) {
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0) return;
+    window.pendingLibraryUploads = [];
+    let remaining = files.length;
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = function(loadEvent) {
+        window.pendingLibraryUploads.push({
+          tempId: Date.now() + Math.floor(Math.random() * 100000),
+          name: file.name,
+          type: file.type || 'unknown',
+          size: file.size,
+          dataUrl: loadEvent.target.result
+        });
+        remaining -= 1;
+        if (remaining === 0) renderPendingLibraryUploads();
+      };
+      reader.onerror = function() {
+        remaining -= 1;
+        if (remaining === 0) renderPendingLibraryUploads();
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  window.savePendingLibraryUploads = savePendingLibraryUploads = function(button) {
+    if (!window.pendingLibraryUploads.length) {
+      alert('Choose at least one file first.');
+      return;
+    }
+    const category = document.getElementById('libraryUploadCategory')?.value || 'general';
+    const note = document.getElementById('libraryUploadNote')?.value.trim() || '';
+    const saved = typeof getSavedLibraryUploads === 'function' ? getSavedLibraryUploads() : safeJsonGet('smallBraveThingsLibraryUploads');
+    const now = getNowText();
+
+    window.pendingLibraryUploads.slice().reverse().forEach(file => {
+      saved.unshift({
+        id: Date.now() + Math.floor(Math.random() * 100000),
+        name: file.name,
+        type: file.type || 'unknown',
+        size: file.size,
+        dataUrl: file.dataUrl,
+        addedAt: now,
+        libraryCategory: category,
+        libraryNote: note,
+        librarySubmittedAt: now
+      });
+    });
+
+    if (typeof saveLibraryUploads === 'function') saveLibraryUploads(saved);
+    else safeJsonSet('smallBraveThingsLibraryUploads', saved);
+
+    window.pendingLibraryUploads = [];
+    const input = document.getElementById('libraryUploadInput');
+    if (input) input.value = '';
+    const noteInput = document.getElementById('libraryUploadNote');
+    if (noteInput) noteInput.value = '';
+    currentLibraryCategoryFilter = category;
+    const categoryFilter = document.getElementById('libraryCategoryFilter');
+    if (categoryFilter) categoryFilter.value = category;
+    renderPendingLibraryUploads();
+    refreshAllLibraryConnectedViews();
+    if (typeof showButtonFeedback === 'function') showButtonFeedback(button, '✅ Submitted');
+  };
+
+  window.clearPendingLibraryUploads = clearPendingLibraryUploads = function(button) {
+    window.pendingLibraryUploads = [];
+    const input = document.getElementById('libraryUploadInput');
+    if (input) input.value = '';
+    renderPendingLibraryUploads();
+    if (typeof showButtonFeedback === 'function') showButtonFeedback(button, '✅ Cleared', 900);
+  };
+
+  // Keep the modal markup current every time it is opened.
+  if (typeof ensureDocumentLibraryModal === 'function' && !ensureDocumentLibraryModal.__saveSubmitWrapped) {
+    const previousEnsureDocumentLibraryModal = ensureDocumentLibraryModal;
+    const wrappedEnsure = function() {
+      previousEnsureDocumentLibraryModal();
+      const uploadPanel = document.getElementById('libraryUploadPanel');
+      if (uploadPanel) {
+        const note = uploadPanel.querySelector('.library-save-submit-note');
+        if (!note) {
+          const input = document.getElementById('libraryUploadInput');
+          if (input) {
+            input.insertAdjacentHTML('afterend', `<p class="small-note library-save-submit-note">Files wait here until you click <strong>Save & Submit</strong>. Pick the folder and add notes before saving.</p>`);
+          }
+        }
+        const saveButton = document.getElementById('saveLibraryUploadButton');
+        if (saveButton) saveButton.textContent = '💾 Save & Submit';
+      }
+      renderPendingLibraryUploads();
+    };
+    wrappedEnsure.__saveSubmitWrapped = true;
+    ensureDocumentLibraryModal = wrappedEnsure;
+  }
+
+  // Add a small sync refresh whenever users open the library so it reflects all app areas.
+  if (typeof openDocumentLibrary === 'function' && !openDocumentLibrary.__syncRefreshWrapped) {
+    const previousOpenDocumentLibrary = openDocumentLibrary;
+    const wrappedOpen = function(button) {
+      previousOpenDocumentLibrary(button);
+      renderPendingLibraryUploads();
+      refreshAllLibraryConnectedViews();
+    };
+    wrappedOpen.__syncRefreshWrapped = true;
+    openDocumentLibrary = wrappedOpen;
+  }
 })();
 
 </script>
