@@ -1,4 +1,4 @@
-<!-- Created: 2026-06-05 9:59 PM CT | Update: mobile-only layout fix for My Progress, top icons, and sticky menu while keeping desktop layout the same -->
+<!-- Created: 2026-06-05 10:31 PM CT | Update: Beta v0.1 with DBT generator recursion fix and DBT support prompt repair -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1721,6 +1721,41 @@
       }
     }
 
+
+    /* 2026-06-05 10:14 PM CT update: Beta version labels */
+    .app-version-label {
+      background: #fffaf5;
+      border: 2px solid #ead8c8;
+      border-radius: 18px;
+      padding: 14px;
+      margin: 22px 0 8px;
+      text-align: center;
+      font-size: 13px;
+      color: #6d5548;
+      box-shadow: 0 6px 16px rgba(59,47,47,0.05);
+    }
+
+    .app-version-label strong {
+      display: block;
+      color: #8a553c;
+      font-size: 15px;
+      margin-bottom: 4px;
+    }
+
+    .settings-version-card {
+      background: #f1e2d6;
+      border: 1px solid #d8c2b0;
+      border-radius: 16px;
+      padding: 12px;
+      margin: 12px 0 16px;
+      font-size: 14px;
+      color: #3b2f2f;
+    }
+
+    .settings-version-card strong {
+      color: #8a553c;
+    }
+
   </style>
 </head>
 
@@ -2335,6 +2370,11 @@
   <p>Your saved VA support scripts will show up here with timestamps.</p>
   <div id="veteranHistory"></div>
 </div>
+    <div class="app-version-label" aria-label="App version">
+      <strong>Small Brave Things Beta v0.1</strong>
+      Last updated: 2026-06-05 10:31 PM CT · Local/Web Beta Test Build · DBT fix
+    </div>
+
   </div>
 
   <script>
@@ -9757,6 +9797,302 @@ function ensureDocumentLibraryModal() {
   app.insertAdjacentHTML('afterbegin', html);
   setupModalDismissHandlers();
 }
+
+
+/* ===== 2026-06-05 10:31 PM CT hotfix: repair DBT generator/support prompts =====
+   Why this exists: an earlier file-upload wrapper reused the name generateDBTPractice.
+   Because function declarations are hoisted, it accidentally called itself and stopped DBT output.
+   These final overrides intentionally replace the broken DBT functions with safe versions. */
+function getSafeDBTSkillGuide(skill) {
+  const guides = {
+    mindfulness: {
+      name: "Mindfulness",
+      focus: "Notice what is happening right now without forcing yourself to fix the whole thing at once.",
+      action: "Name 3 facts, 2 body feelings, and 1 kind next step.",
+      prompt: "What is actually happening right now, and what is my mind adding on top of it?"
+    },
+    distressTolerance: {
+      name: "Distress Tolerance",
+      focus: "Get through the hard moment safely before trying to solve everything.",
+      action: "Pause, breathe, lower the intensity, and choose the safest next step.",
+      prompt: "What helps me survive this moment without making it worse?"
+    },
+    emotionRegulation: {
+      name: "Emotion Regulation",
+      focus: "Understand the emotion, what triggered it, and what it is asking for.",
+      action: "Name the emotion, check the facts, and choose one action that supports the result you want.",
+      prompt: "What emotion is here, what caused it, and what result do I want next?"
+    },
+    interpersonalEffectiveness: {
+      name: "Interpersonal Effectiveness",
+      focus: "Prepare for a hard conversation, request, boundary, or repair.",
+      action: "Write what you need to ask for, say no to, or explain clearly.",
+      prompt: "What do I need to say clearly while still respecting myself?"
+    },
+    unsure: {
+      name: "Help Me Choose",
+      focus: "Use your situation, emotion, urge, and need to choose a useful skill.",
+      action: "Write a little bit first. The app will suggest one skill for this moment.",
+      prompt: "What is the main problem: safety, emotions, thoughts, or communication?"
+    }
+  };
+  return guides[skill] || guides.distressTolerance;
+}
+
+function chooseSafeDBTSkill(situation, emotion, urge, need, desiredResult) {
+  const text = [situation, emotion, urge, need, desiredResult].join(" ").toLowerCase();
+
+  if (text.includes("call") || text.includes("text") || text.includes("talk") || text.includes("boundary") || text.includes("conversation") || text.includes("relationship") || text.includes("explain") || text.includes("ask")) {
+    return "interpersonalEffectiveness";
+  }
+
+  if (text.includes("unsafe") || text.includes("crisis") || text.includes("panic") || text.includes("urge") || text.includes("shut down") || text.includes("explode") || text.includes("give up") || text.includes("survive")) {
+    return "distressTolerance";
+  }
+
+  if (text.includes("anger") || text.includes("angry") || text.includes("sad") || text.includes("shame") || text.includes("fear") || text.includes("guilt") || text.includes("disgust") || text.includes("emotion") || text.includes("trigger")) {
+    return "emotionRegulation";
+  }
+
+  return "mindfulness";
+}
+
+function updateDBTSkillGuide() {
+  const selectedSkill = document.getElementById("dbtSkillSelect")?.value || "unsure";
+  const guideDiv = document.getElementById("dbtSkillGuide");
+  if (!guideDiv) return;
+
+  if (selectedSkill === "unsure") {
+    const guide = getSafeDBTSkillGuide("unsure");
+    guideDiv.innerHTML = `
+      <strong>${guide.name}</strong>
+      <p>${guide.focus}</p>
+      <p><strong>Try this:</strong> ${guide.action}</p>
+    `;
+    return;
+  }
+
+  const guide = getSafeDBTSkillGuide(selectedSkill);
+  guideDiv.innerHTML = `
+    <strong>${guide.name}</strong>
+    <p>${guide.focus}</p>
+    <p><strong>Try this:</strong> ${guide.action}</p>
+  `;
+}
+
+function getDBTFormValues() {
+  return {
+    selectedSkill: document.getElementById("dbtSkillSelect")?.value || "unsure",
+    situation: document.getElementById("dbtSituation")?.value.trim() || "",
+    emotion: document.getElementById("dbtEmotion")?.value.trim() || "",
+    urge: document.getElementById("dbtUrge")?.value.trim() || "",
+    actionTaken: document.getElementById("dbtAction")?.value.trim() || "",
+    impact: document.getElementById("dbtImpact")?.value.trim() || "",
+    need: document.getElementById("dbtNeed")?.value.trim() || "",
+    desiredResult: document.getElementById("dbtResult")?.value.trim() || ""
+  };
+}
+
+function generateDBTPractice(button) {
+  const values = getDBTFormValues();
+  const output = document.getElementById("dbtOutput");
+  if (!output) return;
+
+  const combinedText = [
+    values.selectedSkill,
+    values.situation,
+    values.emotion,
+    values.urge,
+    values.actionTaken,
+    values.impact,
+    values.need,
+    values.desiredResult
+  ].join(" ");
+
+  if (typeof checkCrisisFromText === "function") {
+    checkCrisisFromText(combinedText, true);
+  }
+
+  if (!values.situation && !values.emotion && !values.urge && !values.actionTaken && !values.impact && !values.need && !values.desiredResult) {
+    output.classList.remove("hidden");
+    output.innerHTML = `
+      <h2>Start with one detail.</h2>
+      <p>You do not have to journal a lot. Write one sentence about what is happening, what you feel, or what result you want.</p>
+    `;
+    return;
+  }
+
+  const skillKey = values.selectedSkill === "unsure"
+    ? chooseSafeDBTSkill(values.situation, values.emotion, values.urge, values.need, values.desiredResult)
+    : values.selectedSkill;
+  const guide = getSafeDBTSkillGuide(skillKey);
+  const timestamp = new Date().toLocaleString();
+  const existingDBTLog = editingDBTLogId ? getSavedDBTLogs().find(item => item.id === editingDBTLogId) : null;
+  const attachments = Array.isArray(dbtAttachments) ? [...dbtAttachments] : [];
+
+  const practiceText = `
+    <h3>${escapeHtml(guide.name)} Practice</h3>
+    <p><strong>What is happening:</strong> ${escapeHtml(values.situation || "Not written yet.")}</p>
+    <p><strong>Emotion/body feeling:</strong> ${escapeHtml(values.emotion || "Not written yet.")}</p>
+    <p><strong>Urge:</strong> ${escapeHtml(values.urge || "Not written yet.")}</p>
+    <p><strong>Action:</strong> ${escapeHtml(values.actionTaken || "Not written yet.")}</p>
+    <p><strong>Impact:</strong> ${escapeHtml(values.impact || "Not written yet.")}</p>
+    <p><strong>Need:</strong> ${escapeHtml(values.need || "Not written yet.")}</p>
+    <p><strong>Wanted result:</strong> ${escapeHtml(values.desiredResult || "Not written yet.")}</p>
+    <p><strong>Skill focus:</strong> ${escapeHtml(guide.focus)}</p>
+    <p><strong>One action to try:</strong> ${escapeHtml(guide.action)}</p>
+    <p><strong>Question to carry:</strong> ${escapeHtml(guide.prompt)}</p>
+  `;
+
+  const resultsText = `
+    <p><strong>Real issue:</strong> ${escapeHtml(values.situation || "The situation needs more details.")}</p>
+    <p><strong>Action noticed:</strong> ${escapeHtml(values.actionTaken || values.urge || "No action or urge written yet.")}</p>
+    <p><strong>Impact noticed:</strong> ${escapeHtml(values.impact || "The impact is still unclear. Slow down and notice what changed after the action or urge.")}</p>
+    <p><strong>Next result to aim for:</strong> ${escapeHtml(values.desiredResult || guide.action)}</p>
+  `;
+
+  currentDBTLog = {
+    id: editingDBTLogId || Date.now(),
+    timestamp: existingDBTLog?.timestamp || timestamp,
+    editedAt: editingDBTLogId ? timestamp : (existingDBTLog?.editedAt || ""),
+    skillKey,
+    skillName: guide.name,
+    title: `${guide.name} Practice`,
+    situation: values.situation,
+    emotion: values.emotion,
+    urge: values.urge,
+    actionTaken: values.actionTaken,
+    impact: values.impact,
+    need: values.need,
+    desiredResult: values.desiredResult,
+    practiceText,
+    resultsText,
+    attachments
+  };
+
+  const filesHtml = attachments.length > 0 ? `
+    <h3 class="section-title">Attached Files ${typeof paperclipFor === "function" ? paperclipFor(currentDBTLog) : "📎"}</h3>
+    ${attachments.map(file => typeof renderFilePreview === "function" ? renderFilePreview(file, true) : `<div class="file-preview-card">${escapeHtml(file.name || "Attached file")}</div>`).join("")}
+  ` : "";
+
+  output.classList.remove("hidden");
+  output.innerHTML = `
+    <div class="timestamp">Created: ${escapeHtml(currentDBTLog.timestamp || timestamp)}${currentDBTLog.editedAt ? `<br>Last modified: ${escapeHtml(currentDBTLog.editedAt)}` : ""}</div>
+    <h2>${escapeHtml(guide.name)} Practice ${attachments.length ? "📎" : ""}</h2>
+    ${practiceText}
+    <h3 class="section-title">Results</h3>
+    <div>${resultsText}</div>
+    ${filesHtml}
+    <div class="item-icon-actions" aria-label="DBT practice actions">
+      <button class="icon-action-button" onclick="saveCurrentDBTLog(this)" title="Save DBT practice log">💾 Save</button>
+      <button class="secondary-button icon-action-button" onclick="editCurrentDBTForm(this)" title="Edit DBT practice">✏️ Edit</button>
+      <button class="secondary-button icon-action-button" onclick="copyCurrentDBTLog(this)" title="Copy DBT practice">📋 Copy</button>
+      <button class="secondary-button icon-action-button pin-status" onclick="pinCurrentDBTLog(this)" title="Pin DBT practice">${typeof getPinActionLabel === "function" ? getPinActionLabel("DBT Skill", currentDBTLog.id) : "📌 Pin"}</button>
+      <button class="secondary-button icon-action-button" onclick="archiveCurrentDBTLog(this)" title="Archive DBT practice">🗄️ Archive</button>
+      <button class="delete-button icon-action-button" onclick="deleteCurrentDBTLog(this)" title="Delete DBT practice">🗑️ Delete</button>
+    </div>
+  `;
+
+  if (typeof markDBTChanged === "function") markDBTChanged();
+  if (typeof showButtonFeedback === "function") showButtonFeedback(button, "✅ DBT practice made");
+  if (typeof highlightSection === "function") highlightSection("dbtOutput");
+  if (typeof scrollToElement === "function") scrollToElement("dbtOutput");
+}
+
+function saveCurrentDBTLog(button) {
+  if (!currentDBTLog) {
+    alert("Generate a DBT practice first.");
+    return;
+  }
+
+  if (Array.isArray(dbtAttachments)) {
+    const existing = currentDBTLog.attachments || [];
+    const map = new Map();
+    [...existing, ...dbtAttachments].forEach(file => {
+      const key = `${file.name || "file"}-${file.size || 0}-${file.addedAt || file.id || ""}`;
+      map.set(key, file);
+    });
+    currentDBTLog.attachments = Array.from(map.values());
+  }
+
+  const logs = getSavedDBTLogs();
+  const existingIndex = logs.findIndex(log => log.id === currentDBTLog.id);
+  if (existingIndex >= 0) {
+    logs[existingIndex] = currentDBTLog;
+  } else {
+    logs.unshift(currentDBTLog);
+  }
+
+  saveDBTLogs(logs);
+  editingDBTLogId = null;
+  if (typeof markDBTSaved === "function") markDBTSaved();
+  if (typeof showDBTLogs === "function") showDBTLogs();
+  if (typeof updateDashboard === "function") updateDashboard();
+  if (typeof showButtonFeedback === "function") showButtonFeedback(button, "✅ Saved");
+}
+
+function clearDBTForm(button) {
+  ["dbtSituation", "dbtEmotion", "dbtUrge", "dbtAction", "dbtImpact", "dbtNeed", "dbtResult"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+
+  const skillSelect = document.getElementById("dbtSkillSelect");
+  if (skillSelect) skillSelect.value = "unsure";
+
+  dbtAttachments = [];
+  if (typeof renderDBTFiles === "function") renderDBTFiles();
+
+  currentDBTLog = null;
+  editingDBTLogId = null;
+
+  const output = document.getElementById("dbtOutput");
+  if (output) {
+    output.classList.add("hidden");
+    output.innerHTML = "";
+  }
+
+  updateDBTSkillGuide();
+  if (typeof markDBTSaved === "function") markDBTSaved();
+  if (typeof showButtonFeedback === "function") showButtonFeedback(button, "✅ Cleared");
+}
+
+function editDBTLog(id, button) {
+  const log = getSavedDBTLogs().find(item => item.id === id);
+  if (!log) {
+    alert("DBT log not found.");
+    return;
+  }
+
+  showPage("dbtSection", null, { skipLeaveCheck: true, resetForm: false });
+  editingDBTLogId = log.id;
+  currentDBTLog = log;
+
+  const setValue = (fieldId, value) => {
+    const el = document.getElementById(fieldId);
+    if (el) el.value = value || "";
+  };
+
+  const skillSelect = document.getElementById("dbtSkillSelect");
+  if (skillSelect) skillSelect.value = log.skillKey || "unsure";
+  setValue("dbtSituation", log.situation);
+  setValue("dbtEmotion", log.emotion);
+  setValue("dbtUrge", log.urge);
+  setValue("dbtAction", log.actionTaken);
+  setValue("dbtImpact", log.impact);
+  setValue("dbtNeed", log.need);
+  setValue("dbtResult", log.desiredResult);
+
+  dbtAttachments = log.attachments ? [...log.attachments] : [];
+  if (typeof renderDBTFiles === "function") renderDBTFiles();
+  updateDBTSkillGuide();
+  if (typeof markDBTSaved === "function") markDBTSaved();
+  if (typeof showButtonFeedback === "function") showButtonFeedback(button, "✅ Editing");
+}
+
+window.addEventListener("load", function () {
+  setTimeout(updateDBTSkillGuide, 0);
+});
 
 </script>
 </body>
