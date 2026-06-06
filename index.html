@@ -1,4 +1,4 @@
-<!-- Created: 2026-06-05 11:38 PM CT | Update: Library upload now uses Save & Submit, library items can be edited, and file metadata syncs across app areas -->
+<!-- Created: 2026-06-05 11:54 PM CT | Update: fixed Document Library View item routing to original entries/forms and restored Edit in library LOV menus -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -11223,6 +11223,158 @@ function ensureDocumentLibraryModal() {
     };
     wrappedOpen.__syncRefreshWrapped = true;
     openDocumentLibrary = wrappedOpen;
+  }
+})();
+
+
+
+/* ===== 2026-06-05 11:54 PM CT patch: Library View item routing + Edit LOV fix =====
+   Fixes library item actions so View item opens the original linked form/entry when available,
+   and every library item LOV consistently includes Edit. */
+(function setupLibraryViewItemAndEditMenuFix() {
+  function getSafeLibraryItem(key) {
+    if (typeof getLibraryItemByKey === 'function') {
+      return getLibraryItemByKey(key);
+    }
+    if (Array.isArray(window.currentLibraryRenderedItems)) {
+      return window.currentLibraryRenderedItems.find(item => String(item.libraryKey) === String(key));
+    }
+    return null;
+  }
+
+  function closeLibraryIfOpen() {
+    const modal = document.getElementById('documentLibraryModal');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  function showLibraryOnlyItemDetails(item) {
+    let modal = document.getElementById('libraryItemViewModal');
+    if (!modal) {
+      const app = document.querySelector('.app') || document.body;
+      app.insertAdjacentHTML('afterbegin', `
+        <div id="libraryItemViewModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="libraryItemViewTitle">
+          <div class="modal-card">
+            <button class="modal-x-button" onclick="closeLibraryItemViewModal()" aria-label="Close file details">×</button>
+            <h2 id="libraryItemViewTitle">File Details</h2>
+            <div id="libraryItemViewContent" class="output"></div>
+            <div class="modal-actions">
+              <button class="secondary-button" onclick="closeLibraryItemViewModal()">Close</button>
+            </div>
+          </div>
+        </div>
+      `);
+      if (typeof setupModalDismissHandlers === 'function') setupModalDismissHandlers();
+      modal = document.getElementById('libraryItemViewModal');
+    }
+
+    const file = item.file || {};
+    const content = document.getElementById('libraryItemViewContent');
+    if (content) {
+      content.innerHTML = `
+        <h3>${typeof escapeHtml === 'function' ? escapeHtml(file.name || 'Untitled file') : (file.name || 'Untitled file')}</h3>
+        <p><strong>Folder:</strong> ${typeof getLibraryCategoryLabel === 'function' ? getLibraryCategoryLabel(item.category || 'general') : (item.category || 'General Library')}</p>
+        <p><strong>Location:</strong> ${typeof escapeHtml === 'function' ? escapeHtml(item.location || 'Document Library') : (item.location || 'Document Library')}</p>
+        <p><strong>Linked item:</strong> ${typeof escapeHtml === 'function' ? escapeHtml(item.sourceTitle || 'Library upload') : (item.sourceTitle || 'Library upload')}</p>
+        <p><strong>Added:</strong> ${typeof escapeHtml === 'function' ? escapeHtml(item.uploadedAt || 'Unknown') : (item.uploadedAt || 'Unknown')}</p>
+        ${item.note ? `<p><strong>Note:</strong> ${typeof escapeHtml === 'function' ? escapeHtml(item.note) : item.note}</p>` : ''}
+        <div class="modal-action-row">
+          <button class="secondary-button" onclick="editLibraryItemByKey('${String(item.libraryKey).replace(/'/g, "\\'")}', this)">✏️ Edit</button>
+          ${file.dataUrl ? `<button class="secondary-button" onclick="downloadLibraryItemByKey('${String(item.libraryKey).replace(/'/g, "\\'")}')">⬇️ Download</button>` : ''}
+        </div>
+      `;
+    }
+    closeLibraryIfOpen();
+    modal.classList.remove('hidden');
+  }
+
+  window.closeLibraryItemViewModal = function() {
+    const modal = document.getElementById('libraryItemViewModal');
+    if (modal) modal.classList.add('hidden');
+  };
+
+  window.viewLibraryItemByKey = function(key, button) {
+    const item = getSafeLibraryItem(key);
+    if (!item) {
+      alert('File not found.');
+      return;
+    }
+
+    const sourceType = item.sourceType || '';
+    const sourceId = item.sourceId;
+
+    if (!sourceType || !sourceId || sourceType === 'Library Upload') {
+      return showLibraryOnlyItemDetails(item);
+    }
+
+    closeLibraryIfOpen();
+
+    if (sourceType === 'Journal Entry' || sourceType === 'Saved Story') {
+      if (typeof viewSavedEntry === 'function') return viewSavedEntry(Number(sourceId), button);
+    }
+
+    if (sourceType === 'Purpose Card' || sourceType === 'Reason') {
+      if (typeof viewPurposeCard === 'function') return viewPurposeCard(Number(sourceId), button);
+    }
+
+    if (sourceType === 'DBT Skill' || sourceType === 'DBT Log') {
+      if (typeof viewDBTLog === 'function') return viewDBTLog(Number(sourceId), button);
+    }
+
+    if (sourceType === 'DBT Upload') {
+      if (typeof showPage === 'function') showPage('dbtSection', null, { skipLeaveCheck: true, resetForm: false });
+      if (button && typeof showButtonFeedback === 'function') showButtonFeedback(button, '✅ Opened');
+      return;
+    }
+
+    if (sourceType === 'Pin') {
+      if (typeof openPinDetailModal === 'function') return openPinDetailModal(Number(sourceId));
+    }
+
+    showLibraryOnlyItemDetails(item);
+  };
+
+  window.renderLibraryItemOptions = renderLibraryItemOptions = function(item) {
+    const key = item.libraryKey;
+    const safeKey = String(key).replace(/'/g, "\\'");
+    return `
+      <div class="library-item-options-wrap">
+        <button class="secondary-button options-toggle" onclick="toggleLibraryItemOptions('${safeKey}', event)" title="File options">⋯</button>
+        <div id="libraryOptions-${safeKey}" class="library-item-options hidden">
+          <button class="secondary-button" onclick="viewLibraryItemByKey('${safeKey}', this)">👁️ View item</button>
+          <button class="secondary-button" onclick="editLibraryItemByKey('${safeKey}', this)">✏️ Edit</button>
+          <button class="secondary-button" onclick="downloadLibraryItemByKey('${safeKey}')">⬇️ Download</button>
+          <button class="secondary-button" onclick="copyLibraryItemInfoByKey('${safeKey}')">📋 Copy</button>
+          <button class="secondary-button" onclick="pinLibraryItemByKey('${safeKey}', this)">📌 Pin</button>
+          <button class="secondary-button" onclick="duplicateLibraryItemByKey('${safeKey}', this)">⧉ Duplicate</button>
+          <button class="secondary-button" onclick="archiveLibraryItemByKey('${safeKey}', this)">🗄️ Archive</button>
+          <button class="delete-button" onclick="deleteLibraryItemByKey('${safeKey}', this)">🗑️ Delete</button>
+        </div>
+      </div>`;
+  };
+
+  if (typeof closeAllLOVOptions === 'function' && !closeAllLOVOptions.__libraryMenuCloseWrapped) {
+    const previousCloseAllLOVOptions = closeAllLOVOptions;
+    const wrappedCloseAllLOVOptions = function() {
+      previousCloseAllLOVOptions();
+      document.querySelectorAll('.library-item-options').forEach(menu => menu.classList.add('hidden'));
+    };
+    wrappedCloseAllLOVOptions.__libraryMenuCloseWrapped = true;
+    closeAllLOVOptions = wrappedCloseAllLOVOptions;
+  }
+
+  if (typeof renderDocumentLibrary === 'function' && !renderDocumentLibrary.__viewEditMenuFixWrapped) {
+    const previousRenderDocumentLibrary = renderDocumentLibrary;
+    const wrappedRenderDocumentLibrary = function() {
+      previousRenderDocumentLibrary();
+      // Safety net: if an older rendered menu somehow appears, rebuild the library with the fixed menu next time.
+      document.querySelectorAll('.library-item-options').forEach(menu => {
+        if (!menu.textContent.includes('Edit')) {
+          menu.classList.add('hidden');
+        }
+      });
+    };
+    wrappedRenderDocumentLibrary.__viewEditMenuFixWrapped = true;
+    renderDocumentLibrary = wrappedRenderDocumentLibrary;
   }
 })();
 
