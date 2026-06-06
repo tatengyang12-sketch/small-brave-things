@@ -1,4 +1,4 @@
-<!-- Created: 2026-06-06 09:03 AM CT | Update: public beta prep kit; added beta safety/storage wording, fixed memory file remove handler, generated launch docs -->
+<!-- Created: 2026-06-06 09:03 AM CT | Update: public beta prep kit; added beta safety/storage wording, fixed memory file remove handler, generated launch docs  | Update: cleaned visible version label -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12104,6 +12104,362 @@ document.addEventListener('keydown', function(event) {
     }
   });
 })();
+
+
+/* ===== 2026-06-06 9:21 AM CT patch: Dummy-proof guidance + visible primary actions =====
+   Adds simple helper text for new users and moves Save/Delete out of compact menus after generated previews. */
+(function setupBeginnerFriendlyGuidancePatch() {
+  const BEGINNER_UPDATED = '2026-06-06 09:21 AM CT';
+
+  function safeHtml(value) {
+    if (typeof escapeHtml === 'function') return escapeHtml(value || '');
+    const div = document.createElement('div');
+    div.textContent = value || '';
+    return div.innerHTML;
+  }
+
+  function addStyleOnce() {
+    if (document.getElementById('beginnerFriendlyStyle')) return;
+    const style = document.createElement('style');
+    style.id = 'beginnerFriendlyStyle';
+    style.textContent = `
+      .dummy-guide-card,
+      .what-next-card {
+        background: #fff4eb;
+        border: 2px dashed #d8c2b0;
+        border-radius: 18px;
+        padding: 14px;
+        margin: 14px 0;
+        color: #3b2f2f;
+      }
+
+      .dummy-guide-card strong,
+      .what-next-card strong {
+        display: block;
+        color: #8a553c;
+        margin-bottom: 6px;
+      }
+
+      .dummy-guide-card ol,
+      .dummy-guide-card ul,
+      .what-next-card ol,
+      .what-next-card ul {
+        margin: 8px 0 0 20px;
+        padding: 0;
+        line-height: 1.55;
+      }
+
+      .primary-next-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin: 14px 0;
+      }
+
+      .primary-next-actions button {
+        margin-top: 0;
+        min-height: 52px;
+      }
+
+      .simple-purpose-row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin: 14px 0;
+      }
+
+      .simple-purpose-row button {
+        margin-top: 0;
+        font-size: 14px;
+      }
+
+      .plain-language-note {
+        background: #f1e2d6;
+        border: 1px solid #d8c2b0;
+        border-radius: 14px;
+        padding: 10px;
+        margin-top: 10px;
+        font-size: 14px;
+      }
+
+      @media (max-width: 620px) {
+        .primary-next-actions,
+        .simple-purpose-row {
+          grid-template-columns: 1fr;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function addGuide(sectionId, cardId, html, placement = 'afterbegin') {
+    const section = document.getElementById(sectionId);
+    if (!section || document.getElementById(cardId)) return;
+    section.insertAdjacentHTML(placement, html);
+  }
+
+  function addBeginnerCards() {
+    addStyleOnce();
+
+    const mainMenu = document.getElementById('mainMenu');
+    if (mainMenu && !document.getElementById('homeBeginnerGuide')) {
+      const headerRow = mainMenu.querySelector('.pinboard-header-row');
+      const html = `
+        <div id="homeBeginnerGuide" class="dummy-guide-card">
+          <strong>What is this page?</strong>
+          <p>This is your home board. It shows the reminders, photos, files, and entries you pinned because you wanted to remember them.</p>
+          <ol>
+            <li>Use <strong>Daily Journal</strong> when you want to write and turn your day into a story.</li>
+            <li>Use <strong>DBT Skills</strong> when you feel cloudy and need help seeing the action, impact, and next result.</li>
+            <li>Use <strong>📚 Library</strong> when you want to find your uploaded files.</li>
+          </ol>
+        </div>`;
+      if (headerRow) headerRow.insertAdjacentHTML('afterend', html);
+      else mainMenu.insertAdjacentHTML('afterbegin', html);
+    }
+
+    addGuide('journalSection', 'journalBeginnerGuide', `
+      <div id="journalBeginnerGuide" class="dummy-guide-card">
+        <strong>Daily Journal, in plain words</strong>
+        <ol>
+          <li>Write what happened. It can be messy.</li>
+          <li>Pick a story style.</li>
+          <li>Click <strong>Generate My Story</strong>.</li>
+          <li>After it generates, choose <strong>Save</strong> if you want to keep it or <strong>Delete</strong> if you do not.</li>
+        </ol>
+      </div>
+    `);
+
+    addGuide('dbtSection', 'dbtBeginnerGuide', `
+      <div id="dbtBeginnerGuide" class="dummy-guide-card">
+        <strong>DBT Skills, in plain words</strong>
+        <p>Use this when your feelings are too loud and journaling feels hard.</p>
+        <ol>
+          <li>Write the situation.</li>
+          <li>Write what action happened or what action you feel like taking.</li>
+          <li>Write the impact.</li>
+          <li>Write the result you want next.</li>
+          <li>Generate it, then <strong>Save</strong> if it helps or <strong>Delete</strong> if it was only practice.</li>
+        </ol>
+      </div>
+    `);
+
+    addGuide('purposeSection', 'purposeBeginnerGuide', `
+      <div id="purposeBeginnerGuide" class="dummy-guide-card">
+        <strong>Reasons I’m Still Here, in plain words</strong>
+        <p>This is where you save tiny reasons to keep going, even if the reason feels small.</p>
+        <ol>
+          <li>Write one reason or reminder.</li>
+          <li>Add a photo/file if it helps you remember.</li>
+          <li>Click <strong>Save Purpose Card</strong>.</li>
+          <li>After it saves, you can pin it, copy it, edit it, or delete it.</li>
+        </ol>
+      </div>
+    `);
+
+    addGuide('settingsSection', 'settingsBeginnerGuide', `
+      <div id="settingsBeginnerGuide" class="dummy-guide-card">
+        <strong>Settings, in plain words</strong>
+        <p>This is where you protect, back up, or delete app data. Do not delete anything unless you are sure.</p>
+      </div>
+    `);
+
+    addGuide('backupSection', 'backupBeginnerGuide', `
+      <div id="backupBeginnerGuide" class="dummy-guide-card">
+        <strong>Backup, in plain words</strong>
+        <p>Download a backup so your saved stories, reasons, DBT logs, pins, and library files can be restored later.</p>
+      </div>
+    `);
+
+    addGuide('privacySection', 'privacyBeginnerGuide', `
+      <div id="privacyBeginnerGuide" class="dummy-guide-card">
+        <strong>Privacy & Data, in plain words</strong>
+        <p>This is the delete area. Use it only when you want to remove saved data from this browser.</p>
+      </div>
+    `);
+
+    const version = document.querySelector('.app-version-label');
+    if (version) {
+      version.innerHTML = `<strong>Small Brave Things Beta v0.1</strong><br>Last updated: ${BEGINNER_UPDATED} · Public Beta Build`;
+    }
+  }
+
+  window.ensureBeginnerFriendlyCards = addBeginnerCards;
+
+  // Make the library easier to understand too.
+  function addLibraryBeginnerCard() {
+    const modal = document.getElementById('documentLibraryModal');
+    if (!modal || document.getElementById('libraryBeginnerGuide')) return;
+    const title = modal.querySelector('#documentLibraryTitle') || modal.querySelector('h2');
+    if (!title) return;
+    title.insertAdjacentHTML('afterend', `
+      <div id="libraryBeginnerGuide" class="dummy-guide-card">
+        <strong>Library, in plain words</strong>
+        <p>This is where all uploaded files live. Pick the right folder, add a note if you need one, choose your files, then click <strong>Save & Submit</strong>.</p>
+      </div>
+    `);
+  }
+
+  if (typeof openDocumentLibrary === 'function' && !openDocumentLibrary.__beginnerGuideWrapped) {
+    const previousOpenDocumentLibrary = openDocumentLibrary;
+    const wrappedOpenDocumentLibrary = function(button) {
+      const result = previousOpenDocumentLibrary.call(this, button);
+      setTimeout(addLibraryBeginnerCard, 0);
+      return result;
+    };
+    wrappedOpenDocumentLibrary.__beginnerGuideWrapped = true;
+    openDocumentLibrary = wrappedOpenDocumentLibrary;
+    window.openDocumentLibrary = wrappedOpenDocumentLibrary;
+  }
+
+  // Override story display so generated previews have clear Save/Delete outside of the compact menu.
+  window.displayEntry = displayEntry = function(entry, showButtons) {
+    const output = document.getElementById('storyOutput');
+    if (!output) return;
+    output.classList.remove('hidden');
+    output.classList.add('active-page');
+    const optionsId = `entryPreviewOptions${entry.id}`;
+    const attachments = entry.attachments || [];
+
+    output.innerHTML = `
+      ${showButtons ? getBackJournalHtml() : getBackMenuHtml()}
+      ${getEntryDateHtml(entry)}
+
+      <h2>${safeHtml(entry.title || 'Untitled story')} ${paperclipFor(entry)}</h2>
+
+      ${showButtons ? `
+        <div class="what-next-card">
+          <strong>What do I do now?</strong>
+          <ol>
+            <li>Read the story.</li>
+            <li>Click <strong>Save</strong> if you want to keep it in your history.</li>
+            <li>Click <strong>Delete</strong> if this was only a test.</li>
+            <li>Use <strong>⋯</strong> only for extra options like upload, copy, pin, duplicate, or archive.</li>
+          </ol>
+        </div>
+        <div class="primary-next-actions" aria-label="Main generated story actions">
+          <button onclick="saveCurrentEntry(this)">💾 Save</button>
+          <button class="delete-button" onclick="deleteCurrentGeneratedEntry(this)">🗑️ Delete</button>
+        </div>
+      ` : ''}
+
+      <h3 class="section-title">Original Mood</h3>
+      <p><strong>Mood:</strong> ${safeHtml(entry.mood || 'Not listed')}</p>
+      <p><strong>Energy:</strong> ${safeHtml(entry.energy || 'Not listed')}</p>
+
+      <h3 class="section-title">What Happened</h3>
+      <p>${safeHtml(entry.happened || 'No details entered.')}</p>
+
+      <h3 class="section-title">Hard Thought</h3>
+      <p>${safeHtml(entry.hardThought || 'No hard thought entered.')}</p>
+
+      <h3 class="section-title">Tiny Win</h3>
+      <p>${safeHtml(entry.tinyWin || 'No tiny win entered.')}</p>
+
+      <h3 class="section-title">Gentle Reframe</h3>
+      <p>${safeHtml(entry.reframe || '')}</p>
+
+      <h3 class="section-title">Generated Story</h3>
+      <p>${entry.story || ''}</p>
+
+      <h3 class="section-title">Book Idea</h3>
+      <p>${safeHtml(entry.bookIdea || '')}</p>
+
+      <h3 class="section-title">Illustration Idea</h3>
+      <p>${safeHtml(entry.illustrationIdea || '')}</p>
+
+      <h3 class="section-title">Creative Outlet</h3>
+      <p>${safeHtml(entry.creativeOutlet || 'No creative outlet entered yet.')}</p>
+
+      <h3 class="section-title">Memory Photos & Files ${paperclipFor(entry)}</h3>
+      ${getAttachmentHtml(attachments, entry.id)}
+
+      ${showButtons
+        ? makeActionMenu(optionsId, `
+            <button class="secondary-button" onclick="backToJournal(this)">✏️ Back and Edit</button>
+            <button class="secondary-button" onclick="uploadFilesToCurrentEntry(this)">Upload</button>
+            <button class="secondary-button" onclick="copyCurrentEntry(this)">Copy</button>
+            <button class="secondary-button pin-status" onclick="pinCurrentGeneratedEntry(this)">${getPinActionLabel('Generated Story', entry.id)}</button>
+            <button class="secondary-button" onclick="duplicateCurrentGeneratedEntry(this)">Duplicate</button>
+            <button class="secondary-button" onclick="archiveCurrentGeneratedEntry(this)">Archive</button>
+          `)
+        : makeActionMenu(optionsId, `
+            <button class="secondary-button" onclick="viewSavedEntry(${entry.id}, this)">View</button>
+            <button class="secondary-button" onclick="editSavedEntry(${entry.id}, this)">Edit</button>
+            <button class="secondary-button" onclick="uploadFilesToSavedEntry(${entry.id}, this)">Upload</button>
+            <button class="secondary-button" onclick="copyViewedEntry(${entry.id}, this)">Copy</button>
+            <button class="secondary-button pin-status" onclick="pinEntry(${entry.id}, this)">${getPinActionLabel('Journal Entry', entry.id)}</button>
+            <button class="secondary-button" onclick="duplicateEntry(${entry.id}, this)">Duplicate</button>
+            <button class="secondary-button" onclick="archiveEntry(${entry.id}, this)">Archive</button>
+            <button class="delete-button" onclick="deleteEntry(${entry.id}, this)">Delete</button>
+          `)
+      }
+    `;
+  };
+
+  // Make saved reason details simple and put Delete outside the compact menu.
+  window.displayPurposeCard = displayPurposeCard = function(card) {
+    const output = document.getElementById('purposeOutput');
+    if (!output) return;
+    output.classList.remove('hidden');
+    const optionsId = `purposeViewOptions${card.id}`;
+    output.innerHTML = `
+      <div class="timestamp">${safeHtml(card.timestamp || 'Unknown')}</div>
+      <h2>A Reason to Keep Going ${paperclipFor(card)}</h2>
+      <p>${safeHtml(card.text || '')}</p>
+      ${getAttachmentHtml(card.attachments || [], card.id)}
+      <div class="what-next-card">
+        <strong>This reason is saved.</strong>
+        <p>You can pin it so it shows on the home corkboard, copy it, edit it, or delete it if you do not want it anymore.</p>
+      </div>
+      <div class="simple-purpose-row" aria-label="Main reason actions">
+        <button class="secondary-button" onclick="pinPurposeCard(${card.id}, this)">${getPinActionLabel('Purpose Card', card.id)}</button>
+        <button class="secondary-button" onclick="copyPurposeCard(${card.id}, this)">📋 Copy</button>
+        <button class="delete-button" onclick="deletePurposeCard(${card.id}, this)">🗑️ Delete</button>
+      </div>
+      ${makeActionMenu(optionsId, `
+        <button class="secondary-button" onclick="editPurposeCard(${card.id}, this)">Edit</button>
+        <button class="secondary-button" onclick="uploadFilesToPurposeCard(${card.id}, this)">Upload</button>
+        <button class="secondary-button" onclick="duplicatePurposeCard(${card.id}, this)">Duplicate</button>
+        <button class="secondary-button" onclick="archivePurposeCard(${card.id}, this)">Archive</button>
+      `)}
+    `;
+  };
+
+  // Add a plain-language next-step box after DBT generation while keeping Save/Delete visible.
+  if (typeof generateDBTPractice === 'function' && !generateDBTPractice.__beginnerGuideWrapped) {
+    const previousGenerateDBTPractice = generateDBTPractice;
+    const wrappedGenerateDBTPractice = function(button) {
+      const result = previousGenerateDBTPractice.call(this, button);
+      setTimeout(() => {
+        const output = document.getElementById('dbtOutput');
+        if (!output || output.classList.contains('hidden') || document.getElementById('dbtGeneratedWhatNext')) return;
+        const actions = output.querySelector('.item-icon-actions');
+        const card = document.createElement('div');
+        card.id = 'dbtGeneratedWhatNext';
+        card.className = 'what-next-card';
+        card.innerHTML = `
+          <strong>What do I do now?</strong>
+          <ol>
+            <li>Read the action, impact, and result.</li>
+            <li>Click <strong>Save</strong> if this helps you understand the moment.</li>
+            <li>Click <strong>Delete</strong> if this was only a practice test.</li>
+          </ol>
+        `;
+        if (actions) actions.insertAdjacentElement('beforebegin', card);
+        else output.appendChild(card);
+      }, 0);
+      return result;
+    };
+    wrappedGenerateDBTPractice.__beginnerGuideWrapped = true;
+    generateDBTPractice = wrappedGenerateDBTPractice;
+    window.generateDBTPractice = wrappedGenerateDBTPractice;
+  }
+
+  document.addEventListener('DOMContentLoaded', addBeginnerCards);
+  addBeginnerCards();
+})();
+
 
   </script>
 </body>
